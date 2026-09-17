@@ -24,7 +24,6 @@ export default function NewScreeningPage() {
   ]);
   const [otherSymptoms, setOtherSymptoms] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isAnalyzed, setIsAnalyzed] = useState(false);
 
   const handleToggleSymptom = (id: string) => {
     if (id === "no_symptoms") {
@@ -47,12 +46,8 @@ export default function NewScreeningPage() {
   const handleAnalyze = () => {
     setIsLoading(true);
     setTimeout(() => {
-      setIsLoading(false);
-      setIsAnalyzed(true);
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1200);
-    }, 1500);
+      router.push("/screening-report");
+    }, 400);
   };
 
   return (
@@ -86,21 +81,6 @@ export default function NewScreeningPage() {
               Follow the steps below. Your lower-eyelid image is required to run the AI screening model.
             </p>
           </div>
-
-          {/* Success Toast */}
-          <AnimatePresence>
-            {isAnalyzed && (
-              <motion.div
-                initial={{ opacity: 0, y: -15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs"
-              >
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Screening analysis complete! Redirecting to dashboard results...</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           {/* Step 1: Lower-eyelid image (Required) */}
           <EyelidCaptureCard

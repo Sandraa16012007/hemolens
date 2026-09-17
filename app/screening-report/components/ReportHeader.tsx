@@ -1,0 +1,70 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { Share2, Download, Check } from "lucide-react";
+import { useState } from "react";
+
+export default function ReportHeader() {
+  const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleShare = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDownload = () => {
+    setDownloading(true);
+    setTimeout(() => {
+      setDownloading(false);
+      window.print();
+    }, 600);
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border/60">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-heading tracking-tight">
+          Your screening result
+        </h1>
+        <p className="text-xs sm:text-sm text-muted mt-1">
+          17 September 2026 • Preliminary algorithmic screening
+        </p>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        <button
+          type="button"
+          onClick={handleShare}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-heading hover:bg-surface transition-colors shadow-xs"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-accent-dark" />
+              <span>Link Copied</span>
+            </>
+          ) : (
+            <>
+              <Share2 className="w-3.5 h-3.5 text-muted" />
+              <span>Share</span>
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-dark text-white text-xs font-semibold hover:bg-accent-dark/90 transition-colors shadow-xs disabled:opacity-70"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>{downloading ? "Preparing PDF..." : "Download PDF Report"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
