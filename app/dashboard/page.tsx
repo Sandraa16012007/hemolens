@@ -27,7 +27,7 @@ export default function DashboardPage() {
         />
 
         {/* Dashboard Main View */}
-        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5 space-y-4 sm:space-y-5">
           {/* 1. Hero Screening Banner */}
           <HeroBanner />
 
@@ -38,7 +38,7 @@ export default function DashboardPage() {
           <LatestScreening />
 
           {/* 4. Footer Regulatory Notice */}
-          <footer className="pt-2 pb-6 text-center">
+          <footer className="pt-1 pb-4 text-center">
             <div className="inline-flex items-center gap-1.5 text-xs text-muted">
               <ShieldCheck className="w-3.5 h-3.5 text-accent-dark" />
               <span>

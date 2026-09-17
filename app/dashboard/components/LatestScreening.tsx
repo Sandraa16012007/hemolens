@@ -15,13 +15,13 @@ export default function LatestScreening() {
 
       {/* Active Screening Result Card */}
       <motion.div
-        initial={{ opacity: 0, y: 15 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        transition={{ duration: 0.35, delay: 0.15 }}
         whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(0,0,0,0.04)" }}
-        className="rounded-2xl border border-border bg-white p-6 transition-all"
+        className="rounded-2xl border border-border bg-white p-5 transition-all"
       >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           {/* Metric & Timestamp details */}
           <div className="space-y-4 flex-1">
             {/* Timestamp */}

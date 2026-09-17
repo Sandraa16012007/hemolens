@@ -30,9 +30,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     },
     {
       name: "New Screening",
-      href: "/dashboard",
+      href: "/new-screening",
       icon: PlusCircle,
-      active: false,
+      active: pathname === "/new-screening",
     },
     {
       name: "Screening History",
@@ -86,9 +86,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Image
                 src="/assets/logo.png"
                 alt="HemoLens"
-                width={150}
-                height={38}
-                className="h-8 w-auto object-contain"
+                width={180}
+                height={46}
+                className="h-10 sm:h-11 w-auto object-contain"
                 priority
               />
             </Link>
