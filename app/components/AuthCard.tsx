@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Globe,
@@ -17,6 +18,7 @@ import {
 type AuthTab = "signup" | "login";
 
 export default function AuthCard() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AuthTab>("signup");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,8 +40,10 @@ export default function AuthCard() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate loading
-    setTimeout(() => setIsLoading(false), 2000);
+    // Simulate brief authentication and navigate to onboarding
+    setTimeout(() => {
+      router.push("/onboarding");
+    }, 600);
   };
 
   return (
