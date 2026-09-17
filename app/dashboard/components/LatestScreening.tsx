@@ -81,14 +81,13 @@ export default function LatestScreening() {
 
           {/* Right: View Report CTA */}
           <div className="shrink-0 flex items-center">
-            <Link href="/screening-report" className="block w-full sm:w-auto">
-              <button
-                type="button"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors cursor-pointer"
-              >
-                <span>View Report</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            <Link
+              href="/screening-report"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+              id="btn-view-report-latest"
+            >
+              <span>View Report</span>
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>

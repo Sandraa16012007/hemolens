@@ -31,7 +31,8 @@ export default function QuickActionCards() {
         <div>
           <Link
             href="/screening-history"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+            id="btn-view-history"
           >
             <span>View History</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -61,14 +62,13 @@ export default function QuickActionCards() {
         </div>
 
         <div>
-          <Link href="/ai-assistant" className="inline-block">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors cursor-pointer"
-            >
-              <span>Talk to HemoAI</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+          <Link
+            href="/ai-assistant"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+            id="btn-talk-to-hemoai"
+          >
+            <span>Talk to HemoAI</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       </motion.div>

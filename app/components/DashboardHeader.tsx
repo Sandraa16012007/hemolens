@@ -22,7 +22,7 @@ export default function DashboardHeader({
   const [langOpen, setLangOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState("English");
 
-  const languages = ["English", "Spanish", "French", "Hindi"];
+  const languages = ["English", "Hindi", "Bengali", "Malayalam"];
 
   return (
     <header className="w-full bg-white border-b border-border py-3 px-4 sm:px-8 sticky top-0 z-20 shadow-xs">

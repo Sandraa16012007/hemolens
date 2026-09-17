@@ -114,14 +114,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   key={item.name}
                   href={item.href}
                   onClick={onClose}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${
                     item.active
                       ? "bg-accent/25 text-heading font-semibold shadow-xs border border-accent/40"
-                      : "text-muted hover:text-heading hover:bg-surface"
+                      : "text-muted hover:text-heading hover:bg-surface hover:translate-x-0.5"
                   }`}
                 >
                   <Icon
-                    className={`w-4 h-4 ${
+                    className={`w-4 h-4 transition-colors ${
                       item.active ? "text-accent-dark" : "text-muted"
                     }`}
                   />
@@ -141,16 +141,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 key={item.name}
                 href={item.href}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${
                   item.name === "Log Out"
-                    ? "text-muted hover:text-primary hover:bg-primary/5"
+                    ? "text-muted hover:text-primary hover:bg-primary/5 hover:translate-x-0.5"
                     : item.active
                     ? "bg-accent/25 text-heading font-semibold shadow-xs border border-accent/40"
-                    : "text-muted hover:text-heading hover:bg-surface"
+                    : "text-muted hover:text-heading hover:bg-surface hover:translate-x-0.5"
                 }`}
               >
                 <Icon
-                  className={`w-4 h-4 ${
+                  className={`w-4 h-4 transition-colors ${
                     item.name === "Log Out"
                       ? "text-muted group-hover:text-primary"
                       : "text-muted"

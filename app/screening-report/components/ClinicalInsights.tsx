@@ -130,19 +130,18 @@ export default function ClinicalInsights() {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
-          <Link href="/ai-assistant" className="w-full sm:w-auto flex-1 block">
-            <button
-              type="button"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent-dark text-white text-xs sm:text-sm font-semibold hover:bg-accent-dark/90 transition-colors shadow-xs cursor-pointer"
-            >
-              <span>Ask HemoAI</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+          <Link
+            href="/ai-assistant"
+            className="w-full sm:w-auto flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent-dark text-white text-xs sm:text-sm font-semibold hover:bg-accent-dark/90 active:scale-[0.98] transition-all shadow-xs cursor-pointer"
+            id="btn-ask-hemoai"
+          >
+            <span>Ask HemoAI</span>
+            <ArrowRight className="w-4 h-4" />
           </Link>
 
           <button
             type="button"
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-surface/80 transition-colors"
+            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-surface/80 active:scale-[0.98] transition-all cursor-pointer"
           >
             <span>View Recommendations</span>
           </button>
