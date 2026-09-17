@@ -41,10 +41,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       active: false,
     },
     {
-      name: "AI Health Assistant",
-      href: "/dashboard",
+      name: "AI Assistant",
+      href: "/ai-assistant",
       icon: Bot,
-      active: false,
+      active: pathname === "/ai-assistant",
     },
   ];
 

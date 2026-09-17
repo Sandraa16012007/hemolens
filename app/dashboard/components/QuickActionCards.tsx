@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { History, Bot, ArrowRight } from "lucide-react";
 
@@ -60,13 +61,15 @@ export default function QuickActionCards() {
         </div>
 
         <div>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors"
-          >
-            <span>Talk to HemoAI</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <Link href="/ai-assistant" className="inline-block">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors cursor-pointer"
+            >
+              <span>Talk to HemoAI</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </Link>
         </div>
       </motion.div>
     </div>
