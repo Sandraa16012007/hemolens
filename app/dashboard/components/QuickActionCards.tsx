@@ -29,13 +29,13 @@ export default function QuickActionCards() {
         </div>
 
         <div>
-          <button
-            type="button"
+          <Link
+            href="/screening-history"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 transition-colors"
           >
             <span>View History</span>
             <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          </Link>
         </div>
       </motion.div>
 

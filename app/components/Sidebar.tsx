@@ -36,9 +36,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     },
     {
       name: "Screening History",
-      href: "/dashboard",
+      href: "/screening-history",
       icon: History,
-      active: false,
+      active: pathname === "/screening-history",
     },
     {
       name: "AI Assistant",
