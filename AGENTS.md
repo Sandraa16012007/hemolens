@@ -1,3 +1,22 @@
+# Application description
+HemoLens is an AI-powered web application that enables users to perform a preliminary anemia screening using a lower eyelid image (primary) and optional nail-bed image. By combining computer vision, machine learning, and personalized health context, HemoLens estimates anemia risk, explains results through an AI health assistant, and encourages timely confirmatory blood testing.
+
+# CRITICAL RULES - RESPONSES MUST FOLLOW
+- Keep responses concise and to the point unless user asks otherwise.
+## PLANNING MODE
+- Always ask clarifying questions unless the user asks otherwise
+- Never assume design, tech stack or features
+- Use deep-dive sub-agents to review the different aspects of your plan before presenting to the user
+## CHANGE / EDIT MODE
+- Never implement features yourself when possible - use sub-agents!
+- Identify changes from the plan that can be implemented in parallel, and use sub-agents to implement the features efficiently
+- When using sub-agents to implement features, act as a coordinator only
+- Use the best model for the task - premium models for complex tasks (like coding) and mid-tier models for simpler tasks, like documentation
+- After completing features (large or small), always run commands like lint, type check and next build to check code quality
+
+## UI Design
+- Keep the UI consistent across all pages in the app. Refer to the home/landing page whenever creating a new component or page so that the UI and component design, overall style, color pallete and typography is consistent across all pages.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
