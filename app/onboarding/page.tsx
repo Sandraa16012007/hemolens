@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import OnboardingHeader from "./components/OnboardingHeader";
 import BasicInfoCard, { BasicInfoData } from "./components/BasicInfoCard";
@@ -14,6 +15,7 @@ import OnboardingFooter from "./components/OnboardingFooter";
 import { CheckCircle2 } from "lucide-react";
 
 export default function OnboardingPage() {
+  const router = useRouter();
   const [basicInfo, setBasicInfo] = useState<BasicInfoData>({
     age: "28",
     gender: "",
@@ -80,8 +82,10 @@ export default function OnboardingPage() {
     setTimeout(() => {
       setIsLoading(false);
       setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    }, 1200);
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 700);
+    }, 1000);
   };
 
   return (
