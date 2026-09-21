@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, UploadCloud } from "lucide-react";
 import { motion } from "framer-motion";
+import UploadMedicalReportModal from "./UploadMedicalReportModal";
 
 export default function HistoryHeader() {
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -30,8 +34,19 @@ export default function HistoryHeader() {
           </p>
         </div>
 
-        {/* Right: + Start New Screening CTA */}
-        <div className="flex-shrink-0">
+        {/* Right: Actions (Secondary CTA: Add Medical Reports + Primary CTA: Start New Screening) */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {/* Secondary CTA: Add Medical Reports */}
+          <button
+            type="button"
+            onClick={() => setIsUploadModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-border bg-white text-heading text-xs sm:text-sm font-semibold hover:bg-surface hover:border-border/80 active:scale-[0.98] transition-all shadow-xs cursor-pointer"
+          >
+            <UploadCloud className="w-4 h-4 text-accent-dark" strokeWidth={2} />
+            <span>Add Medical Reports</span>
+          </button>
+
+          {/* Primary CTA: Start New Screening */}
           <Link
             href="/new-screening"
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-xs sm:text-sm font-semibold hover:bg-primary-hover active:scale-[0.98] transition-all shadow-sm shadow-primary/20"
@@ -41,6 +56,12 @@ export default function HistoryHeader() {
           </Link>
         </div>
       </div>
+
+      {/* Upload Medical Report Modal */}
+      <UploadMedicalReportModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+      />
     </motion.div>
   );
 }
