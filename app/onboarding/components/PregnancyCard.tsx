@@ -36,7 +36,7 @@ export default function PregnancyCard({ data, onChange }: PregnancyCardProps) {
         </div>
         <div>
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            4. Pregnancy status
+            5. Pregnancy status
           </h2>
           <p className="text-xs text-muted mt-0.5">
             Iron metabolic demand expands significantly during gestation

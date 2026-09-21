@@ -13,6 +13,7 @@ HemoLens is an AI-powered web application that enables users to perform a prelim
 - When using sub-agents to implement features, act as a coordinator only
 - Use the best model for the task - premium models for complex tasks (like coding) and mid-tier models for simpler tasks, like documentation
 - After completing features (large or small), always run commands like lint, type check and next build to check code quality
+- Ensure that HEMOLENS.md is always updated with any major decisions, application features or documentation updates. Consult with the user first before making any changes to the documentation. Also run git diff after updating the documentation to ensure that the changes are in line with the user's expectations.
 
 ## UI Design
 - Keep the UI consistent across all pages in the app. Refer to the home/landing page whenever creating a new component or page so that the UI and component design, overall style, color pallete and typography is consistent across all pages.

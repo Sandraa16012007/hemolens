@@ -30,7 +30,7 @@ export default function LocationCard({ data, onChange }: LocationCardProps) {
         </div>
         <div>
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            5. Location <span className="font-normal text-muted">• Optional</span>
+            6. Location <span className="font-normal text-muted">• Optional</span>
           </h2>
           <p className="text-xs text-muted mt-0.5">
             Allows referral mapping if clinical follow-up is recommended

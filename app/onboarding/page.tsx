@@ -8,6 +8,9 @@ import BasicInfoCard, { BasicInfoData } from "./components/BasicInfoCard";
 import HealthNutritionCard, {
   HealthNutritionData,
 } from "./components/HealthNutritionCard";
+import PrimaryCareCard, {
+  PrimaryCareData,
+} from "./components/PrimaryCareCard";
 import SymptomsCard, { SymptomsData } from "./components/SymptomsCard";
 import PregnancyCard, { PregnancyData } from "./components/PregnancyCard";
 import LocationCard, { LocationData } from "./components/LocationCard";
@@ -28,6 +31,11 @@ export default function OnboardingPage() {
     anemiaHistory: "No",
     medicalConditions: "",
     isNoneConditions: false,
+  });
+
+  const [primaryCare, setPrimaryCare] = useState<PrimaryCareData>({
+    doctorPhone: "",
+    doctorName: "",
   });
 
   const [symptoms, setSymptoms] = useState<SymptomsData>({
@@ -58,6 +66,13 @@ export default function OnboardingPage() {
     value: HealthNutritionData[K]
   ) => {
     setHealthNutrition((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handlePrimaryCareChange = (
+    field: keyof PrimaryCareData,
+    value: string
+  ) => {
+    setPrimaryCare((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSymptomsChange = <K extends keyof SymptomsData>(
@@ -125,7 +140,7 @@ export default function OnboardingPage() {
 
           {/* Two-Column Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Left Column: Basic Information & Health/Nutrition */}
+            {/* Left Column: Basic Information, Health/Nutrition & Primary Care Provider */}
             <div className="space-y-6">
               <BasicInfoCard
                 data={basicInfo}
@@ -134,6 +149,10 @@ export default function OnboardingPage() {
               <HealthNutritionCard
                 data={healthNutrition}
                 onChange={handleHealthNutritionChange}
+              />
+              <PrimaryCareCard
+                data={primaryCare}
+                onChange={handlePrimaryCareChange}
               />
             </div>
 

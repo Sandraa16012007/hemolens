@@ -70,7 +70,7 @@ export default function SymptomsCard({ data, onChange }: SymptomsCardProps) {
         </div>
         <div>
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            3. Current symptoms
+            4. Current symptoms
           </h2>
           <p className="text-xs text-muted mt-0.5">
             Select any symptoms experienced over the past 7 days
