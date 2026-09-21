@@ -1,20 +1,57 @@
 "use client";
 
+import { useState, useRef } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Upload, Camera, Check, RotateCcw } from "lucide-react";
+import { Upload, Camera, Check, RotateCcw, Sparkles } from "lucide-react";
+import CameraCaptureModal from "./CameraCaptureModal";
+import type { SelectedImageData } from "./EyelidCaptureCard";
 
 interface NailBedCaptureCardProps {
-  hasImage: boolean;
-  onUpload: () => void;
-  onRetake: () => void;
+  imageData: SelectedImageData | null;
+  onImageChange: (data: SelectedImageData | null) => void;
 }
 
 export default function NailBedCaptureCard({
-  hasImage,
-  onUpload,
-  onRetake,
+  imageData,
+  onImageChange,
 }: NailBedCaptureCardProps) {
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const previewUrl = URL.createObjectURL(file);
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+
+      onImageChange({
+        name: file.name,
+        size: `${sizeMB} MB`,
+        previewUrl,
+      });
+    }
+  };
+
+  const handleCameraCapture = (captured: {
+    name: string;
+    previewUrl: string;
+    size: string;
+  }) => {
+    onImageChange({
+      name: captured.name,
+      size: captured.size,
+      previewUrl: captured.previewUrl,
+    });
+  };
+
+  const handleRetake = () => {
+    onImageChange(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -23,6 +60,15 @@ export default function NailBedCaptureCard({
       className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-xs"
       id="nailbed-capture-card"
     >
+      {/* Hidden File Input for Native File Dialog */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Step Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
@@ -67,22 +113,22 @@ export default function NailBedCaptureCard({
             </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons with Hover Animations & matching color for Use Camera */}
           <div className="flex flex-wrap items-center gap-2.5 pt-1">
             <button
               type="button"
-              onClick={onUpload}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-heading hover:bg-surface/80 hover:border-border/80 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-heading hover:bg-surface/80 hover:border-border/80 hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-muted" />
               <span>Upload Image</span>
             </button>
             <button
               type="button"
-              onClick={onUpload}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-heading hover:bg-surface/80 hover:border-border/80 transition-colors"
+              onClick={() => setIsCameraOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent-dark text-white text-xs font-semibold hover:bg-accent-dark/90 hover:scale-105 active:scale-95 transition-all shadow-xs hover:shadow-md cursor-pointer"
             >
-              <Camera className="w-3.5 h-3.5 text-muted" />
+              <Camera className="w-3.5 h-3.5" />
               <span>Use Camera</span>
             </button>
           </div>
@@ -90,36 +136,59 @@ export default function NailBedCaptureCard({
       </div>
 
       {/* Selected Optional Image Status Card if uploaded */}
-      {hasImage && (
+      {imageData && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-surface"
+          className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-accent/40 bg-accent/15"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white border border-border text-accent-dark flex items-center justify-center shrink-0">
-              <Check className="w-4 h-4" />
+            <div className="relative w-10 h-10 rounded-lg bg-white border border-accent/30 text-accent-dark flex items-center justify-center shrink-0 overflow-hidden">
+              {imageData.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imageData.previewUrl}
+                  alt="Selected nailbed preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
             </div>
             <div>
-              <span className="text-xs sm:text-sm font-bold text-heading">
-                nailbed_sample_01.jpg
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-heading truncate max-w-[200px] sm:max-w-xs">
+                  {imageData.name}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white text-accent-dark border border-accent/40 text-[10px] font-bold shrink-0">
+                  <Check className="w-3 h-3" />
+                  Image selected
+                </span>
+              </div>
               <p className="text-[11px] text-muted mt-0.5">
-                1.8 MB • Good lighting
+                {imageData.size} • Capillary optical profile ready
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onRetake}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-heading transition-colors self-end sm:self-center px-2 py-1 rounded-md hover:bg-white"
+            onClick={handleRetake}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-dark hover:text-heading transition-colors self-end sm:self-center px-2.5 py-1.5 rounded-md hover:bg-white/60 cursor-pointer active:scale-95"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Retake</span>
           </button>
         </motion.div>
       )}
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        type="nailbed"
+        onCapture={handleCameraCapture}
+      />
     </motion.div>
   );
 }

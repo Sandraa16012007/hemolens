@@ -2,22 +2,25 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
 import Sidebar from "../components/Sidebar";
 import DashboardHeader from "../components/DashboardHeader";
-import EyelidCaptureCard from "./components/EyelidCaptureCard";
+import EyelidCaptureCard, { SelectedImageData } from "./components/EyelidCaptureCard";
 import NailBedCaptureCard from "./components/NailBedCaptureCard";
 import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
-import { CheckCircle2 } from "lucide-react";
 
 export default function NewScreeningPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Form State
-  const [hasEyelidImage, setHasEyelidImage] = useState(true);
-  const [hasNailBedImage, setHasNailBedImage] = useState(false);
+  // Form & Image State
+  const [eyelidImage, setEyelidImage] = useState<SelectedImageData | null>({
+    name: "eyelid_sample_01.jpg",
+    size: "2.4 MB",
+    previewUrl: "/assets/exampleEyelid.jpg",
+  });
+  const [nailBedImage, setNailBedImage] = useState<SelectedImageData | null>(null);
+
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([
     "fatigue",
     "pale_skin",
@@ -84,16 +87,14 @@ export default function NewScreeningPage() {
 
           {/* Step 1: Lower-eyelid image (Required) */}
           <EyelidCaptureCard
-            hasImage={hasEyelidImage}
-            onUpload={() => setHasEyelidImage(true)}
-            onRetake={() => setHasEyelidImage(false)}
+            imageData={eyelidImage}
+            onImageChange={setEyelidImage}
           />
 
           {/* Step 2: Nail-bed image (Optional) */}
           <NailBedCaptureCard
-            hasImage={hasNailBedImage}
-            onUpload={() => setHasNailBedImage(true)}
-            onRetake={() => setHasNailBedImage(false)}
+            imageData={nailBedImage}
+            onImageChange={setNailBedImage}
           />
 
           {/* Step 3: Current symptoms */}
@@ -106,7 +107,7 @@ export default function NewScreeningPage() {
 
           {/* Bottom Action Bar */}
           <ScreeningBottomBar
-            hasEyelidImage={hasEyelidImage}
+            hasEyelidImage={!!eyelidImage}
             isLoading={isLoading}
             onAnalyze={handleAnalyze}
           />

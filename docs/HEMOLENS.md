@@ -32,8 +32,10 @@
 
 ### **Backend & AI Services (Phase 2 — Target Stack)**
 - **API Framework:** FastAPI (Python 3.10+)
-- **Computer Vision:** OpenCV (`cv2`), NumPy (palpebral conjunctiva ROI extraction, color space normalization, erythema index calculation)
-- **Machine Learning:** Scikit-learn / XGBoost / Random Forest (trained on public conjunctiva datasets like CP-AnemiC / Eyes Defy Anemia)
+- **Computer Vision:** OpenCV (`cv2`), NumPy — palpebral conjunctiva ROI extraction, LAB/CLAHE color normalization, nail-bed color-ratio feature extraction.
+- **Machine Learning:**
+  - **Eyelid (primary):** EfficientNet-B0 (ImageNet-pretrained transfer learning) with a dual-task head — anemia classification (sigmoid, BCE loss) + continuous Hb regression (MSE loss). Fine-tuned on **CP-AnemiC** and **Eyes-Defy-Anemia** public datasets, seeded from the existing Hugging Face `galihkjaya/anemia-palor-detection` checkpoint as baseline.
+  - **Nail-bed (optional/secondary):** Random Forest / XGBoost on RGB/HSV/LAB color-ratio features — not a deep-learning model, kept lightweight and returns `null` if no usable data/model is available.
 - **AI Health Assistant:** Local LLM via Ollama (Qwen 2.5 / Gemma 2 / Llama 3) with LangChain and memory persistence
 - **Database & Auth:** Supabase PostgreSQL & Supabase Auth (or lightweight SQLite/PostgreSQL for local demo)
 - **Deployment:** Vercel (Frontend), Render / Railway Free Tier (FastAPI Backend)
@@ -114,11 +116,11 @@ graph TD
 | **FR-01** | User Authentication | UI Built | Sign up, login, session persistence. Backend Supabase integration in Phase 2. |
 | **FR-02** | Health Profile Onboarding | UI Built | Stores demographics, diet, symptoms, pregnancy, and medical conditions. |
 | **FR-03** | Guided Camera Capture | UI Built | Dual-capture support: lower eyelid (primary) and nail bed (optional). |
-| **FR-04** | Image Quality Validation | Phase 2 | Automatic validation for blur, brightness, resolution, and eye framing. |
-| **FR-05** | Computer Vision Preprocessing | Phase 2 | OpenCV palpebral conjunctiva segmentation, color normalization (RGB/HSV/LAB), and feature extraction. |
-| **FR-06** | ML Risk & Hb Estimation | Phase 2 | ML model predicting Hb range and risk classification (Normal, Mild, Moderate, Severe). |
-| **FR-07** | Screening Report Generation | UI Built | Full report layout with metrics, contributing factors, recommendations, and disclaimer. |
-| **FR-08** | Context-Aware AI Chatbot | UI Built | Conversational assistant with memory of user health profile and past screenings. |
+| **FR-04** | Image Quality Validation | Phase 2 | Deterministic OpenCV checks: resolution (≥640×480), blur (variance of Laplacian), brightness/exposure. No ML training required. |
+| **FR-05** | Computer Vision Preprocessing | Phase 2 | OpenCV palpebral conjunctiva ROI extraction, LAB + CLAHE color normalization, resize to 224×224; nail-bed RGB/HSV/LAB feature extraction. |
+| **FR-06** | ML Risk & Hb Estimation | Phase 2 | EfficientNet-B0 dual-head model (eyelid, primary) outputs continuous Hb regression + anemia probability; RF/XGBoost (nail, secondary) outputs Hb estimate from color features. Confidence-weighted fusion → Hb range + risk classification (Normal, Mild, Moderate, Severe). |
+| **FR-07** | Screening Report Generation | UI Built | Full report layout with metrics, contributing factors, recommendations, and disclaimer; text generated via a single LLM call from structured ML output + profile + symptoms. |
+| **FR-08** | Context-Aware AI Chatbot | UI Built | Conversational assistant with memory of user health profile and past screenings; one LLM call per message. |
 | **FR-09** | Screening History & Trends | UI Built | Historical archive of all screenings with metric comparison and trajectory graphs. |
 
 ---
@@ -138,31 +140,59 @@ graph TD
 - Direct lab API integration (lookup module provides educational guidance only).
 - Native iOS/Android apps (PWA / mobile web is used).
 - Offline client-side neural network execution.
+- Training deep-learning models from scratch (ViT, U-Net, custom CNN, GANs, joint multimodal networks) — out of scope given the 4-day/₹0 constraint; transfer learning + classical ML only.
 
 ---
 
-## **6. Next Phase Roadmap (Phase 2 — Backend & ML Integration)**
+## **6. AI/ML Pipeline (Finalized Architecture)**
+
+> Full stage-by-stage detail, API contracts, and dataset/metric specifics live in **`pipeline.md`**. Summary below.
+
+- **Strict separation:** CV/ML produces all numeric predictions; the LLM is used only for explanation (report + chat), never for computing Hb or risk. **0 LLM calls** in the inference path, **1 LLM call** for report generation, **1 LLM call per chatbot message**.
+- **Two-stage CV + ML design**, eyelid model as primary/quantitative, nail-bed model as optional/secondary:
+
+```
+IMAGE(S) → OpenCV Validate (blur/brightness/resolution)
+        → ROI Extraction (conjunctiva / nail)
+        → Color Normalization (LAB + CLAHE / RGB-HSV-LAB features)
+        → ML Model (EfficientNet-B0 dual-head | RF/XGBoost)
+        → {hb_estimate, anemia_probability, confidence}
+        → Confidence-weighted Fusion → Hb Range + Risk Tier + Overall Confidence
+        → + Onboarding Profile + Active Symptoms → Structured Patient State (JSON)
+        → 1 LLM call (local Ollama) → Human-readable Screening Report
+        → Supabase (save compact summary) → AI Assistant (context-aware chat)
+```
+
+- **Symptoms/profile isolation:** subjective and contextual data (age, sex, pregnancy, symptoms, history) are merged only at the report-generation layer, never fed into the image model itself — preserving interpretability of image-derived evidence.
+- **Uncertainty over point estimates:** models output a continuous Hb value plus an uncertainty/confidence measure; the application layer derives the displayed range (e.g., predicted ± uncertainty) and maps it to a risk tier rather than hard-coding one universal threshold.
+- **Datasets:** CP-AnemiC (710 conjunctival images, pediatric) + Eyes-Defy-Anemia (218 images, Hb + segmentation masks) for eyelid fine-tuning, seeded from the existing Hugging Face `galihkjaya/anemia-palor-detection` EfficientNet-B0 baseline. Nail-bed relies on classical color-feature engineering (RF/XGBoost), not a public deep-learning dataset.
+- **Splitting/evaluation:** patient-wise train/val/test splits (never image-wise); classification metrics (accuracy, precision, recall, specificity, F1, ROC-AUC) and regression metrics (MAE, RMSE, R², Pearson r, Bland–Altman) reported separately.
+
+---
+
+## **7. Next Phase Roadmap (Phase 2 — Backend & ML Integration)**
 
 ### **Step 1: FastAPI Backend Setup**
 - Create `backend/` directory with FastAPI application.
 - Setup CORS, Pydantic schemas, and endpoints:
   - `POST /api/screen/validate-image`: Image sharpness and brightness check.
-  - `POST /api/screen/analyze`: OpenCV feature extraction + ML inference.
+  - `POST /api/screen/analyze`: OpenCV feature extraction + ML inference (eyelid + optional nail) + fusion.
   - `POST /api/chat`: Ollama LLM endpoint with conversation context.
   - `GET/POST /api/profile` & `/api/history`: Supabase database sync.
 
 ### **Step 2: Computer Vision Pipeline**
-- Implement eyelid conjunctiva detection and ROI extraction using OpenCV.
-- Extract red cell index, erythema index, and color channel statistics.
+- Implement eyelid conjunctiva detection and ROI extraction using OpenCV (landmark-based or guided-crop for MVP).
+- Implement nail-bed ROI extraction and RGB/HSV/LAB color-ratio feature extraction.
 
 ### **Step 3: Machine Learning Model**
-- Train Random Forest / XGBoost model using public datasets (CP-AnemiC / Eyes Defy Anemia).
-- Output: Hb range estimation, Anemia risk classification, and Confidence score.
+- Fine-tune EfficientNet-B0 (dual-head: classification + regression) on CP-AnemiC + Eyes-Defy-Anemia for eyelid Hb/risk estimation.
+- Train Random Forest / XGBoost on nail color features if usable labeled data is available; otherwise ship API with `"nail": null`.
+- Output: Hb range estimation, anemia risk classification, and confidence score per model, plus fused overall result.
 
 ### **Step 4: AI Assistant LLM Service**
 - Connect FastAPI to Ollama running Qwen 2.5 / Gemma 2.
-- Inject system prompt with clinical guardrails, user profile, and recent screening results.
+- Inject system prompt with clinical guardrails, structured patient-state JSON (profile + symptoms + screening history), and recent screening results.
 
 ### **Step 5: End-to-End Testing & Verification**
 - Connect Next.js frontend API calls to FastAPI endpoints.
-- Validate full flow from camera capture to real ML prediction and AI chat.
+- Validate full flow from camera capture → quality validation → ROI/normalization → ML prediction → fusion → LLM report → storage → AI chat.
