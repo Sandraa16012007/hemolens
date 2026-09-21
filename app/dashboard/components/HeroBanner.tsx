@@ -1,14 +1,42 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Camera, Clock, CheckCircle2, ShieldCheck, ArrowRight } from "lucide-react";
+import { getCurrentUser } from "@/lib/supabase/auth";
 
 interface HeroBannerProps {
   onStartScreening?: () => void;
+  userName?: string;
 }
 
-export default function HeroBanner({ onStartScreening }: HeroBannerProps) {
+export default function HeroBanner({ onStartScreening, userName }: HeroBannerProps) {
+  const [fullName, setFullName] = useState<string>(userName || "Full Name");
+
+  useEffect(() => {
+    if (userName) {
+      setFullName(userName);
+      return;
+    }
+
+    async function fetchUser() {
+      try {
+        const user = await getCurrentUser();
+        if (user?.user_metadata?.full_name) {
+          setFullName(user.user_metadata.full_name);
+        } else if (user?.email) {
+          const namePart = user.email.split("@")[0];
+          setFullName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
+        }
+      } catch (err) {
+        console.error("Failed to load user name:", err);
+      }
+    }
+
+    fetchUser();
+  }, [userName]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -27,9 +55,9 @@ export default function HeroBanner({ onStartScreening }: HeroBannerProps) {
             <span>Non-Invasive Optical Screening</span>
           </div>
 
-          {/* Heading */}
+          {/* Heading with User's Full Name */}
           <h1 className="text-xl sm:text-2xl font-extrabold text-heading tracking-tight">
-            Ready for your next screening?
+            Ready for your next screening, {fullName}?
           </h1>
 
           {/* Subcopy */}
