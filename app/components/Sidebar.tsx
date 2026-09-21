@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   PlusCircle,
@@ -12,6 +12,7 @@ import {
   LogOut,
   X,
 } from "lucide-react";
+import { signOut } from "@/lib/supabase/auth";
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -20,6 +21,14 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    if (onClose) onClose();
+    await signOut();
+    router.push("/");
+    router.refresh();
+  };
 
   const mainNavItems = [
     {
@@ -136,26 +145,32 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="border-t border-border pt-3 flex flex-col gap-1.5">
           {bottomNavItems.map((item) => {
             const Icon = item.icon;
+            if (item.name === "Log Out") {
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] text-muted hover:text-primary hover:bg-primary/5 hover:translate-x-0.5 text-left w-full"
+                >
+                  <Icon className="w-4 h-4 transition-colors text-muted group-hover:text-primary" />
+                  <span>{item.name}</span>
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.name}
                 href={item.href}
                 onClick={onClose}
                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${
-                  item.name === "Log Out"
-                    ? "text-muted hover:text-primary hover:bg-primary/5 hover:translate-x-0.5"
-                    : item.active
+                  item.active
                     ? "bg-accent/25 text-heading font-semibold shadow-xs border border-accent/40"
                     : "text-muted hover:text-heading hover:bg-surface hover:translate-x-0.5"
                 }`}
               >
-                <Icon
-                  className={`w-4 h-4 transition-colors ${
-                    item.name === "Log Out"
-                      ? "text-muted group-hover:text-primary"
-                      : "text-muted"
-                  }`}
-                />
+                <Icon className="w-4 h-4 transition-colors text-muted" />
                 <span>{item.name}</span>
               </Link>
             );

@@ -72,11 +72,11 @@ export default function OnboardingPage() {
         if (profile.gender) setBasicInfo((prev) => ({ ...prev, gender: profile.gender || "" }));
         if (profile.height_cm) setBasicInfo((prev) => ({ ...prev, height: String(profile.height_cm) }));
         if (profile.weight_kg) setBasicInfo((prev) => ({ ...prev, weight: String(profile.weight_kg) }));
-        if (profile.dietary_pattern) setHealthNutrition((prev) => ({ ...prev, dietaryPattern: profile.dietary_pattern as any }));
-        if (profile.anemia_history) setHealthNutrition((prev) => ({ ...prev, anemiaHistory: profile.anemia_history as any }));
+        if (profile.dietary_pattern) setHealthNutrition((prev) => ({ ...prev, dietaryPattern: profile.dietary_pattern as HealthNutritionData["dietaryPattern"] }));
+        if (profile.anemia_history) setHealthNutrition((prev) => ({ ...prev, anemiaHistory: profile.anemia_history as HealthNutritionData["anemiaHistory"] }));
         if (profile.chronic_conditions) setHealthNutrition((prev) => ({ ...prev, medicalConditions: profile.chronic_conditions || "" }));
         if (profile.symptoms) setSymptoms((prev) => ({ ...prev, selectedSymptoms: profile.symptoms || [] }));
-        if (profile.pregnancy_status) setPregnancy({ pregnancyStatus: profile.pregnancy_status as any });
+        if (profile.pregnancy_status) setPregnancy({ pregnancyStatus: profile.pregnancy_status as PregnancyData["pregnancyStatus"] });
         if (profile.location) setLocation({ location: profile.location || "" });
         if (profile.doctor_name || profile.doctor_phone) {
           setPrimaryCare({
@@ -173,9 +173,13 @@ export default function OnboardingPage() {
       setTimeout(() => {
         router.push("/dashboard");
       }, 700);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsLoading(false);
-      setErrorMessage(err?.message || "An unexpected error occurred while saving.");
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred while saving.";
+      setErrorMessage(message);
     }
   };
 

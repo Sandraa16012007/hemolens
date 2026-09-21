@@ -63,6 +63,7 @@ export default function AuthCard() {
       if (data.session) {
         // User is directly signed in
         router.push("/onboarding");
+        router.refresh();
       } else if (data.user) {
         // Email confirmation is required by Supabase project settings
         setSuccessMessage(
@@ -71,9 +72,14 @@ export default function AuthCard() {
         setIsLoading(false);
       } else {
         router.push("/onboarding");
+        router.refresh();
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || "An unexpected error occurred during registration.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred during registration.";
+      setErrorMessage(message);
       setIsLoading(false);
     }
   };
@@ -97,8 +103,13 @@ export default function AuthCard() {
       }
 
       router.push("/dashboard");
-    } catch (err: any) {
-      setErrorMessage(err?.message || "An unexpected error occurred during sign in.");
+      router.refresh();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred during sign in.";
+      setErrorMessage(message);
       setIsLoading(false);
     }
   };

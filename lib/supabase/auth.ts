@@ -1,5 +1,5 @@
 import { createClient } from "./client";
-import type { HealthProfile, HealthProfileInsert, HealthProfileUpdate } from "@/types/database.types";
+import type { HealthProfile, HealthProfileInsert } from "@/types/database.types";
 
 /**
  * Sign up a new user using email & password.
@@ -68,12 +68,15 @@ export async function getHealthProfile(userId: string) {
  */
 export async function upsertHealthProfile(profile: HealthProfileInsert) {
   const supabase = createClient();
-  const { data, error } = await (supabase
-    .from("user_profiles") as any)
-    .upsert({
-      ...profile,
-      updated_at: new Date().toISOString(),
-    })
+  const payload: HealthProfileInsert = {
+    ...profile,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .upsert(payload as any)
     .select()
     .single();
 
