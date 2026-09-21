@@ -1,15 +1,17 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Share2, Download, Check } from "lucide-react";
+import { Share2, Download, Check, Stethoscope } from "lucide-react";
 import { useState } from "react";
+import ShareToPcpModal from "./ShareToPcpModal";
 
 export default function ReportHeader() {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [isPcpModalOpen, setIsPcpModalOpen] = useState(false);
 
   const handleShare = () => {
-    if (navigator.clipboard) {
+    if (typeof window !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -36,11 +38,22 @@ export default function ReportHeader() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
+        {/* Share with Primary Care Provider Button */}
+        <button
+          type="button"
+          onClick={() => setIsPcpModalOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-accent-dark/30 bg-accent/15 text-xs font-semibold text-accent-dark hover:bg-accent/25 hover:border-accent-dark/50 transition-all shadow-xs cursor-pointer"
+        >
+          <Stethoscope className="w-3.5 h-3.5 shrink-0" />
+          <span>Share to PCP</span>
+        </button>
+
+        {/* Generic Share Button */}
         <button
           type="button"
           onClick={handleShare}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-heading hover:bg-surface transition-colors shadow-xs"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-white text-xs font-semibold text-heading hover:bg-surface transition-colors shadow-xs cursor-pointer"
         >
           {copied ? (
             <>
@@ -55,16 +68,23 @@ export default function ReportHeader() {
           )}
         </button>
 
+        {/* Download PDF Button */}
         <button
           type="button"
           onClick={handleDownload}
           disabled={downloading}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-dark text-white text-xs font-semibold hover:bg-accent-dark/90 transition-colors shadow-xs disabled:opacity-70"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-dark text-white text-xs font-semibold hover:bg-accent-dark/90 transition-colors shadow-xs disabled:opacity-70 cursor-pointer"
         >
           <Download className="w-3.5 h-3.5" />
           <span>{downloading ? "Preparing PDF..." : "Download PDF Report"}</span>
         </button>
       </div>
+
+      {/* Share to PCP Modal */}
+      <ShareToPcpModal
+        isOpen={isPcpModalOpen}
+        onClose={() => setIsPcpModalOpen(false)}
+      />
     </div>
   );
 }

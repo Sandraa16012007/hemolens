@@ -1,9 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Droplet, AlertTriangle, HelpCircle } from "lucide-react";
+import {
+  Droplet,
+  AlertTriangle,
+  HelpCircle,
+  Eye,
+  Maximize2,
+  CheckCircle2,
+} from "lucide-react";
+import Image from "next/image";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 export default function TopMetricsGrid() {
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+
   return (
     <div className="space-y-4" id="top-metrics-grid">
       {/* 2-Card Row: Estimated Hb & Anemia Risk */}
@@ -102,41 +114,142 @@ export default function TopMetricsGrid() {
         </motion.div>
       </div>
 
-      {/* Card 3: Result Confidence Banner */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.12 }}
-        className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-xs space-y-3"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-bold text-heading">
-              Result confidence
-            </span>
-            <span title="Model confidence estimation" className="inline-flex cursor-pointer">
-              <HelpCircle className="w-3.5 h-3.5 text-muted" />
+      {/* 2-Card Row: Shortened Result Confidence Card + Photos View Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 items-stretch">
+        {/* Card 3: Result Confidence (Shortened) */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.12 }}
+          className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between"
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-heading">
+                  Result confidence
+                </span>
+                <span title="Model confidence estimation" className="inline-flex cursor-pointer">
+                  <HelpCircle className="w-3.5 h-3.5 text-muted" />
+                </span>
+              </div>
+              <span className="text-base sm:text-lg font-extrabold text-accent-dark">
+                82%
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="h-2 w-full rounded-full bg-surface border border-border overflow-hidden p-0.5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: "82%" }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className="h-full rounded-full bg-accent-dark"
+              />
+            </div>
+
+            <p className="text-xs text-muted leading-relaxed">
+              Confidence indicates how strongly the screening model supports this result based on palpebral vascularity and illumination indices. It does not indicate definitive medical certainty.
+            </p>
+          </div>
+
+          <div className="pt-3 border-t border-border/70 flex items-center justify-between text-xs text-muted mt-3">
+            <span>Model Version: <strong>v2.4-ensemble</strong></span>
+            <span className="flex items-center gap-1 text-emerald-700 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              Verified
             </span>
           </div>
-          <span className="text-base sm:text-lg font-extrabold text-accent-dark">
-            82%
-          </span>
-        </div>
+        </motion.div>
 
-        {/* Progress Bar */}
-        <div className="h-2 w-full rounded-full bg-surface border border-border overflow-hidden p-0.5">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: "82%" }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="h-full rounded-full bg-accent-dark"
-          />
-        </div>
+        {/* Card 4: Uploaded Photos View Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.16 }}
+          className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-xs flex flex-col justify-between"
+        >
+          <div>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-accent/30 text-accent-dark flex items-center justify-center">
+                  <Eye className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs sm:text-sm font-bold text-heading block">
+                    Uploaded Photos View
+                  </span>
+                </div>
+              </div>
 
-        <p className="text-xs text-muted leading-relaxed">
-          Confidence indicates how strongly the screening model supports this result based on palpebral vascularity and illumination indices. It does not indicate definitive medical certainty.
-        </p>
-      </motion.div>
+              <button
+                type="button"
+                onClick={() => setIsPhotoModalOpen(true)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-accent-dark hover:underline cursor-pointer"
+              >
+                <Maximize2 className="w-3 h-3" />
+                <span>Expand</span>
+              </button>
+            </div>
+
+            {/* Photos Preview Grid */}
+            <div className="grid grid-cols-2 gap-2.5 mb-2">
+              {/* Eyelid Photo */}
+              <div
+                onClick={() => setIsPhotoModalOpen(true)}
+                className="group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface cursor-pointer shadow-xs"
+              >
+                <Image
+                  src="/assets/exampleEyelid.jpg"
+                  alt="Uploaded Eyelid Scan"
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
+                <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
+                  Lower Eyelid
+                </span>
+                <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Maximize2 className="w-2.5 h-2.5" />
+                </span>
+              </div>
+
+              {/* Nailbed Photo */}
+              <div
+                onClick={() => setIsPhotoModalOpen(true)}
+                className="group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface cursor-pointer shadow-xs"
+              >
+                <Image
+                  src="/assets/exampleNailBed.png"
+                  alt="Uploaded Nail Bed Scan"
+                  fill
+                  className="object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
+                <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
+                  Nail Bed
+                </span>
+                <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Maximize2 className="w-2.5 h-2.5" />
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card Footer */}
+          <div className="pt-2.5 border-t border-border/70 flex items-center justify-between text-xs text-muted">
+            <span className="truncate">2 scans analyzed by CV pipeline</span>
+            <span className="font-semibold text-accent-dark">HD Validated</span>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Image Preview Lightbox Modal */}
+      <ImagePreviewModal
+        isOpen={isPhotoModalOpen}
+        onClose={() => setIsPhotoModalOpen(false)}
+      />
     </div>
   );
 }
