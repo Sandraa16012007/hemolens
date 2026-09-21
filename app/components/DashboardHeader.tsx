@@ -120,7 +120,7 @@ export default function DashboardHeader({
 
           {/* User Profile Avatar */}
           <Link
-            href="/onboarding"
+            href="/profile"
             className="relative w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center hover:ring-2 hover:ring-primary/30 transition-all"
             title="User Profile"
           >

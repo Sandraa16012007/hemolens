@@ -15,6 +15,8 @@ import {
   Loader2,
 } from "lucide-react";
 
+import { signUpWithEmail, signInWithEmail } from "@/lib/supabase/auth";
+
 type AuthTab = "signup" | "login";
 
 export default function AuthCard() {
@@ -22,6 +24,8 @@ export default function AuthCard() {
   const [activeTab, setActiveTab] = useState<AuthTab>("signup");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [langOpen, setLangOpen] = useState(false);
 
   // Form state
@@ -37,13 +41,77 @@ export default function AuthCard() {
     password: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSignUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
-    // Simulate brief authentication and navigate to onboarding
-    setTimeout(() => {
-      router.push("/onboarding");
-    }, 600);
+
+    try {
+      const { data, error } = await signUpWithEmail(
+        signUpForm.email.trim(),
+        signUpForm.password,
+        signUpForm.fullName.trim()
+      );
+
+      if (error) {
+        setErrorMessage(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.session) {
+        // User is directly signed in
+        router.push("/onboarding");
+        router.refresh();
+      } else if (data.user) {
+        // Email confirmation is required by Supabase project settings
+        setSuccessMessage(
+          "Account created! Please check your email to confirm your account, or log in if confirmation is disabled."
+        );
+        setIsLoading(false);
+      } else {
+        router.push("/onboarding");
+        router.refresh();
+      }
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred during registration.";
+      setErrorMessage(message);
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsLoading(true);
+
+    try {
+      const { error } = await signInWithEmail(
+        loginForm.email.trim(),
+        loginForm.password
+      );
+
+      if (error) {
+        setErrorMessage(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred during sign in.";
+      setErrorMessage(message);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -133,6 +201,20 @@ export default function AuthCard() {
         </div>
       </div>
 
+      {/* Alerts */}
+      <div className="px-6 pt-3">
+        {errorMessage && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+            {errorMessage}
+          </div>
+        )}
+        {successMessage && (
+          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+            {successMessage}
+          </div>
+        )}
+      </div>
+
       {/* Form content */}
       <AnimatePresence mode="wait">
         {activeTab === "signup" ? (
@@ -143,7 +225,7 @@ export default function AuthCard() {
             exit={{ opacity: 0, x: 16 }}
             transition={{ duration: 0.25 }}
             className="px-6 py-4 space-y-3"
-            onSubmit={handleSubmit}
+            onSubmit={handleSignUpSubmit}
             id="signup-form"
           >
             {/* Full name */}
@@ -306,7 +388,7 @@ export default function AuthCard() {
             exit={{ opacity: 0, x: -16 }}
             transition={{ duration: 0.25 }}
             className="px-6 py-4 space-y-3"
-            onSubmit={handleSubmit}
+            onSubmit={handleLoginSubmit}
             id="login-form"
           >
             {/* Email */}

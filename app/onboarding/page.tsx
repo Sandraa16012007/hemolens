@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import OnboardingHeader from "./components/OnboardingHeader";
@@ -15,10 +15,12 @@ import SymptomsCard, { SymptomsData } from "./components/SymptomsCard";
 import PregnancyCard, { PregnancyData } from "./components/PregnancyCard";
 import LocationCard, { LocationData } from "./components/LocationCard";
 import OnboardingFooter from "./components/OnboardingFooter";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
+import { getCurrentUser, getHealthProfile, upsertHealthProfile } from "@/lib/supabase/auth";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
   const [basicInfo, setBasicInfo] = useState<BasicInfoData>({
     age: "28",
     gender: "",
@@ -53,6 +55,39 @@ export default function OnboardingPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Check authentication & load existing profile if present
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getCurrentUser();
+      if (!user) {
+        // Fallback: If not logged in or in preview mode, let them continue or redirect
+        return;
+      }
+      setUserId(user.id);
+      const { data: profile } = await getHealthProfile(user.id);
+      if (profile) {
+        if (profile.age) setBasicInfo((prev) => ({ ...prev, age: String(profile.age) }));
+        if (profile.gender) setBasicInfo((prev) => ({ ...prev, gender: profile.gender || "" }));
+        if (profile.height_cm) setBasicInfo((prev) => ({ ...prev, height: String(profile.height_cm) }));
+        if (profile.weight_kg) setBasicInfo((prev) => ({ ...prev, weight: String(profile.weight_kg) }));
+        if (profile.dietary_pattern) setHealthNutrition((prev) => ({ ...prev, dietaryPattern: profile.dietary_pattern as HealthNutritionData["dietaryPattern"] }));
+        if (profile.anemia_history) setHealthNutrition((prev) => ({ ...prev, anemiaHistory: profile.anemia_history as HealthNutritionData["anemiaHistory"] }));
+        if (profile.chronic_conditions) setHealthNutrition((prev) => ({ ...prev, medicalConditions: profile.chronic_conditions || "" }));
+        if (profile.symptoms) setSymptoms((prev) => ({ ...prev, selectedSymptoms: profile.symptoms || [] }));
+        if (profile.pregnancy_status) setPregnancy({ pregnancyStatus: profile.pregnancy_status as PregnancyData["pregnancyStatus"] });
+        if (profile.location) setLocation({ location: profile.location || "" });
+        if (profile.doctor_name || profile.doctor_phone) {
+          setPrimaryCare({
+            doctorName: profile.doctor_name || "",
+            doctorPhone: profile.doctor_phone || "",
+          });
+        }
+      }
+    }
+    loadUser();
+  }, []);
 
   const handleBasicInfoChange = (
     field: keyof BasicInfoData,
@@ -92,15 +127,60 @@ export default function OnboardingPage() {
     setLocation({ location: value });
   };
 
-  const handleSaveAndContinue = () => {
+  const handleSaveAndContinue = async () => {
     setIsLoading(true);
-    setTimeout(() => {
+    setErrorMessage(null);
+
+    try {
+      let currentUserId = userId;
+      if (!currentUserId) {
+        const user = await getCurrentUser();
+        currentUserId = user ? user.id : null;
+      }
+
+      if (currentUserId) {
+        const combinedSymptoms = [...symptoms.selectedSymptoms];
+        if (symptoms.otherSymptoms.trim()) {
+          combinedSymptoms.push(symptoms.otherSymptoms.trim());
+        }
+
+        const { error } = await upsertHealthProfile({
+          id: currentUserId,
+          age: basicInfo.age ? parseInt(basicInfo.age, 10) : null,
+          gender: basicInfo.gender || null,
+          height_cm: basicInfo.height ? parseFloat(basicInfo.height) : null,
+          weight_kg: basicInfo.weight ? parseFloat(basicInfo.weight) : null,
+          dietary_pattern: healthNutrition.dietaryPattern || null,
+          anemia_history: healthNutrition.anemiaHistory || null,
+          chronic_conditions: healthNutrition.medicalConditions || null,
+          symptoms: combinedSymptoms,
+          pregnancy_status: pregnancy.pregnancyStatus || null,
+          location: location.location || null,
+          doctor_name: primaryCare.doctorName || null,
+          doctor_phone: primaryCare.doctorPhone || null,
+        });
+
+        if (error) {
+          console.error("Profile save error:", error);
+          setErrorMessage(error.message || "Failed to save profile to database.");
+          setIsLoading(false);
+          return;
+        }
+      }
+
       setIsLoading(false);
       setIsSaved(true);
       setTimeout(() => {
         router.push("/dashboard");
       }, 700);
-    }, 1000);
+    } catch (err: unknown) {
+      setIsLoading(false);
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred while saving.";
+      setErrorMessage(message);
+    }
   };
 
   return (
@@ -122,6 +202,21 @@ export default function OnboardingPage() {
               estimate your hemoglobin levels and tailor your screening report.
             </p>
           </div>
+
+          {/* Error Alert */}
+          <AnimatePresence>
+            {errorMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="mb-6 mx-auto max-w-md p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+              >
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{errorMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Toast Notification */}
           <AnimatePresence>
