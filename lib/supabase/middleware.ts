@@ -45,6 +45,7 @@ export async function updateSession(request: NextRequest) {
 
   const protectedRoutes = [
     "/dashboard",
+    "/profile",
     "/onboarding",
     "/new-screening",
     "/screening-report",

@@ -60,9 +60,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const bottomNavItems = [
     {
       name: "Profile",
-      href: "/onboarding",
+      href: "/profile",
       icon: User,
-      active: pathname === "/onboarding",
+      active: pathname === "/profile",
     },
     {
       name: "Log Out",

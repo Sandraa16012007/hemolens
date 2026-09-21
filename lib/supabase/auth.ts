@@ -82,3 +82,58 @@ export async function upsertHealthProfile(profile: HealthProfileInsert) {
 
   return { data: data as HealthProfile | null, error };
 }
+
+/**
+ * Update the user's account credentials (e.g. metadata or password).
+ */
+export async function updateUserAccount(updates: {
+  fullName?: string;
+  password?: string;
+}) {
+  const supabase = createClient();
+  const authUpdates: { data?: { full_name?: string }; password?: string } = {};
+
+  if (updates.fullName !== undefined) {
+    authUpdates.data = { full_name: updates.fullName };
+  }
+  if (updates.password) {
+    authUpdates.password = updates.password;
+  }
+
+  return await supabase.auth.updateUser(authUpdates);
+}
+
+/**
+ * Delete the authenticated user's account from auth.users and cascade-delete profile records.
+ */
+export async function deleteUserAccount(userId: string) {
+  const supabase = createClient();
+
+  try {
+    const response = await fetch("/api/auth/delete-user", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to delete account from server.");
+    }
+  } catch {
+    // Fallback: direct RPC and table cleanup from client
+    try {
+      await supabase.rpc("delete_user");
+    } catch {
+      await supabase.from("user_profiles").delete().eq("id", userId);
+    }
+  }
+
+  // Ensure local session is cleared
+  const { error: signoutError } = await supabase.auth.signOut();
+
+  return {
+    error: signoutError || null,
+  };
+}
