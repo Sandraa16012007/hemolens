@@ -1,19 +1,21 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ZoomIn, Eye, Sparkles, CheckCircle2 } from "lucide-react";
+import { X, Eye, Sparkles, CheckCircle2, ImageOff } from "lucide-react";
 import Image from "next/image";
 
 interface ImagePreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialType?: "eyelid" | "nailbed";
+  eyelidImageUrl?: string | null;
+  nailbedImageUrl?: string | null;
 }
 
 export default function ImagePreviewModal({
   isOpen,
   onClose,
-  initialType = "eyelid",
+  eyelidImageUrl,
+  nailbedImageUrl,
 }: ImagePreviewModalProps) {
   return (
     <AnimatePresence>
@@ -72,17 +74,26 @@ export default function ImagePreviewModal({
                   </span>
                 </div>
 
-                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-black/5">
-                  <Image
-                    src="/assets/exampleEyelid.jpg"
-                    alt="Captured Lower Eyelid Biomarker Scan"
-                    fill
-                    className="object-cover"
-                    priority
-                  />
-                  <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
-                    Palpebral Conjunctiva
-                  </div>
+                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-surface">
+                  {eyelidImageUrl ? (
+                    <>
+                      <Image
+                        src={eyelidImageUrl}
+                        alt="Captured Lower Eyelid Biomarker Scan"
+                        fill
+                        className="object-cover"
+                        priority
+                      />
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
+                        Palpebral Conjunctiva
+                      </div>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
+                      <ImageOff className="w-8 h-8 opacity-40" />
+                      <span className="text-xs">No image available</span>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[11px] text-muted leading-relaxed">
@@ -94,34 +105,53 @@ export default function ImagePreviewModal({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-heading">2. Nail-bed Scan</span>
-                  <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent-dark font-semibold text-[10px] border border-accent-dark/30 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    Capillary Validated
-                  </span>
+                  {nailbedImageUrl ? (
+                    <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent-dark font-semibold text-[10px] border border-accent-dark/30 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Capillary Validated
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-surface text-muted font-semibold text-[10px] border border-border">
+                      Not uploaded
+                    </span>
+                  )}
                 </div>
 
-                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-black/5">
-                  <Image
-                    src="/assets/exampleNailBed.png"
-                    alt="Captured Nail Bed Biomarker Scan"
-                    fill
-                    className="object-cover"
-                    priority
-                  />
-                  <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
-                    Subungual Microvasculature
-                  </div>
+                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-surface">
+                  {nailbedImageUrl ? (
+                    <>
+                      <Image
+                        src={nailbedImageUrl}
+                        alt="Captured Nail Bed Biomarker Scan"
+                        fill
+                        className="object-cover"
+                        priority
+                      />
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
+                        Subungual Microvasculature
+                      </div>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
+                      <ImageOff className="w-8 h-8 opacity-40" />
+                      <span className="text-xs text-center leading-snug px-4">
+                        Nail-bed image not uploaded
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[11px] text-muted leading-relaxed">
-                  Capillary bed refill and micro-pallor evaluated as a secondary biomarker.
+                  {nailbedImageUrl
+                    ? "Capillary bed refill and micro-pallor evaluated as a secondary biomarker."
+                    : "Upload a nail-bed image during screening for supplementary analysis."}
                 </p>
               </div>
             </div>
 
-            {/* Footer Notice */}
+            {/* Footer */}
             <div className="pt-3 border-t border-border/70 flex items-center justify-between text-xs text-muted">
-              <span>Captured on 17 Sep 2026 • Color profile normalized</span>
+              <span>Color profile normalized • HemoLens AI screening</span>
               <button
                 type="button"
                 onClick={onClose}

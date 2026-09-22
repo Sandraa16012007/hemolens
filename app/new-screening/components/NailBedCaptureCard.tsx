@@ -29,6 +29,7 @@ export default function NailBedCaptureCard({
         name: file.name,
         size: `${sizeMB} MB`,
         previewUrl,
+        file,
       });
     }
   };
@@ -37,11 +38,13 @@ export default function NailBedCaptureCard({
     name: string;
     previewUrl: string;
     size: string;
+    file?: File | Blob;
   }) => {
     onImageChange({
       name: captured.name,
       size: captured.size,
       previewUrl: captured.previewUrl,
+      file: captured.file,
     });
   };
 

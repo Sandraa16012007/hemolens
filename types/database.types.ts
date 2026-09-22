@@ -11,6 +11,12 @@ export type AnemiaHistory = "No" | "Yes" | "Not sure";
 export type PregnancyStatus = "Not applicable" | "Pregnant" | "Not pregnant";
 export type BiologicalGender = "Female" | "Male" | "Other" | "Prefer not to say";
 
+export interface ScreeningSymptoms {
+  selected?: string[];
+  other?: string;
+  [key: string]: Json | undefined;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -67,6 +73,70 @@ export interface Database {
           updated_at?: string;
         };
       };
+      screenings: {
+        Row: {
+          id: string;
+          user_id: string;
+          eyelid_image_path: string;
+          eyelid_image_url: string;
+          nailbed_image_path: string | null;
+          nailbed_image_url: string | null;
+          symptoms: Json | null;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          eyelid_image_path: string;
+          eyelid_image_url: string;
+          nailbed_image_path?: string | null;
+          nailbed_image_url?: string | null;
+          symptoms?: Json | null;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          eyelid_image_path?: string;
+          eyelid_image_url?: string;
+          nailbed_image_path?: string | null;
+          nailbed_image_url?: string | null;
+          symptoms?: Json | null;
+          status?: string;
+          created_at?: string;
+        };
+      };
+      reports: {
+        Row: {
+          id: string;
+          screening_id: string;
+          user_id: string;
+          status: string;
+          result: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          screening_id: string;
+          user_id: string;
+          status?: string;
+          result?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          screening_id?: string;
+          user_id?: string;
+          status?: string;
+          result?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -83,3 +153,11 @@ export interface Database {
 export type HealthProfile = Database["public"]["Tables"]["user_profiles"]["Row"];
 export type HealthProfileInsert = Database["public"]["Tables"]["user_profiles"]["Insert"];
 export type HealthProfileUpdate = Database["public"]["Tables"]["user_profiles"]["Update"];
+
+export type Screening = Database["public"]["Tables"]["screenings"]["Row"];
+export type ScreeningInsert = Database["public"]["Tables"]["screenings"]["Insert"];
+export type ScreeningUpdate = Database["public"]["Tables"]["screenings"]["Update"];
+
+export type Report = Database["public"]["Tables"]["reports"]["Row"];
+export type ReportInsert = Database["public"]["Tables"]["reports"]["Insert"];
+export type ReportUpdate = Database["public"]["Tables"]["reports"]["Update"];
