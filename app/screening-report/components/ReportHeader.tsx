@@ -1,11 +1,26 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Share2, Download, Check, Stethoscope } from "lucide-react";
+import { Share2, Download, Check, Stethoscope, Clock } from "lucide-react";
 import { useState } from "react";
 import ShareToPcpModal from "./ShareToPcpModal";
 
-export default function ReportHeader() {
+interface ReportHeaderProps {
+  createdAt?: string | null;
+  reportStatus?: string;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export default function ReportHeader({
+  createdAt,
+  reportStatus = "pending",
+}: ReportHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [isPcpModalOpen, setIsPcpModalOpen] = useState(false);
@@ -26,20 +41,30 @@ export default function ReportHeader() {
     }, 600);
   };
 
+  const isPending = reportStatus === "pending" || reportStatus === "processing";
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border/60">
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-heading tracking-tight">
           Your screening result
         </h1>
-        <p className="text-xs sm:text-sm text-muted mt-1">
-          17 September 2026 • Preliminary algorithmic screening
-        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-xs sm:text-sm text-muted">
+            {createdAt ? formatDate(createdAt) : "—"} • Preliminary algorithmic screening
+          </p>
+          {isPending && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold">
+              <Clock className="w-3 h-3" />
+              Analysis pending
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
-        {/* Share with Primary Care Provider Button */}
+        {/* Share with Primary Care Provider */}
         <button
           type="button"
           onClick={() => setIsPcpModalOpen(true)}
@@ -49,7 +74,7 @@ export default function ReportHeader() {
           <span>Share to PCP</span>
         </button>
 
-        {/* Generic Share Button */}
+        {/* Generic Share */}
         <button
           type="button"
           onClick={handleShare}
@@ -68,7 +93,7 @@ export default function ReportHeader() {
           )}
         </button>
 
-        {/* Download PDF Button */}
+        {/* Download PDF */}
         <button
           type="button"
           onClick={handleDownload}
@@ -80,7 +105,6 @@ export default function ReportHeader() {
         </button>
       </div>
 
-      {/* Share to PCP Modal */}
       <ShareToPcpModal
         isOpen={isPcpModalOpen}
         onClose={() => setIsPcpModalOpen(false)}

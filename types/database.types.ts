@@ -108,6 +108,35 @@ export interface Database {
           created_at?: string;
         };
       };
+      reports: {
+        Row: {
+          id: string;
+          screening_id: string;
+          user_id: string;
+          status: string;
+          result: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          screening_id: string;
+          user_id: string;
+          status?: string;
+          result?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          screening_id?: string;
+          user_id?: string;
+          status?: string;
+          result?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -128,3 +157,7 @@ export type HealthProfileUpdate = Database["public"]["Tables"]["user_profiles"][
 export type Screening = Database["public"]["Tables"]["screenings"]["Row"];
 export type ScreeningInsert = Database["public"]["Tables"]["screenings"]["Insert"];
 export type ScreeningUpdate = Database["public"]["Tables"]["screenings"]["Update"];
+
+export type Report = Database["public"]["Tables"]["reports"]["Row"];
+export type ReportInsert = Database["public"]["Tables"]["reports"]["Insert"];
+export type ReportUpdate = Database["public"]["Tables"]["reports"]["Update"];
