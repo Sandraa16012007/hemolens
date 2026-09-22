@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, X } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import DashboardHeader from "../components/DashboardHeader";
 import EyelidCaptureCard, { SelectedImageData } from "./components/EyelidCaptureCard";
 import NailBedCaptureCard from "./components/NailBedCaptureCard";
 import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
+import { createScreeningWithImages } from "@/lib/supabase/screenings";
 
 export default function NewScreeningPage() {
   const router = useRouter();
@@ -27,6 +29,7 @@ export default function NewScreeningPage() {
   ]);
   const [otherSymptoms, setOtherSymptoms] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleToggleSymptom = (id: string) => {
     if (id === "no_symptoms") {
@@ -46,11 +49,36 @@ export default function NewScreeningPage() {
     }
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
+    if (!eyelidImage) return;
+
     setIsLoading(true);
-    setTimeout(() => {
-      router.push("/screening-report");
-    }, 400);
+    setErrorMessage(null);
+
+    try {
+      const { data, error } = await createScreeningWithImages({
+        eyelidImage,
+        nailBedImage,
+        symptoms: {
+          selected: selectedSymptoms,
+          other: otherSymptoms.trim() || undefined,
+        },
+      });
+
+      if (error || !data) {
+        throw error || new Error("Failed to save screening record.");
+      }
+
+      router.push(`/screening-report?screeningId=${data.id}`);
+    } catch (err: unknown) {
+      console.error("Screening upload error:", err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to upload screening. Please check your connection and try again.";
+      setErrorMessage(msg);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -75,6 +103,26 @@ export default function NewScreeningPage() {
 
         {/* Screening Main View */}
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-4 sm:space-y-5">
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-primary text-xs sm:text-sm flex items-start justify-between gap-3 animate-fadeIn">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-primary">Screening Submission Error</p>
+                  <p className="text-primary/90 mt-0.5">{errorMessage}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-primary hover:text-primary-dark p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Header Title Section */}
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-heading tracking-tight mb-1">

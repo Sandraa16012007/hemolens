@@ -15,7 +15,12 @@ interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
   type: "eyelid" | "nailbed";
-  onCapture: (imageData: { name: string; previewUrl: string; size: string }) => void;
+  onCapture: (imageData: {
+    name: string;
+    previewUrl: string;
+    size: string;
+    file?: File | Blob;
+  }) => void;
 }
 
 export default function CameraCaptureModal({
@@ -46,8 +51,6 @@ export default function CameraCaptureModal({
 
   const startCamera = useCallback(async () => {
     stopStream();
-    setCapturedImage(null);
-    setHasCameraPermission(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -71,16 +74,43 @@ export default function CameraCaptureModal({
   }, [stopStream]);
 
   useEffect(() => {
-    if (isOpen) {
-      startCamera();
-    } else {
+    if (!isOpen) {
       stopStream();
-      setCapturedImage(null);
+      return;
     }
+
+    let isMounted = true;
+    navigator.mediaDevices
+      ?.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      })
+      .then((stream) => {
+        if (!isMounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setHasCameraPermission(true);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error("Camera access error:", err);
+        setHasCameraPermission(false);
+      });
+
     return () => {
+      isMounted = false;
       stopStream();
     };
-  }, [isOpen, startCamera, stopStream]);
+  }, [isOpen, stopStream]);
 
   const handleTakeSnapshot = () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -109,11 +139,33 @@ export default function CameraCaptureModal({
       ? `eyelid_capture_${Date.now().toString().slice(-4)}.jpg`
       : `nailbed_capture_${Date.now().toString().slice(-4)}.jpg`;
 
-    onCapture({
-      name: filename,
-      previewUrl: capturedImage,
-      size: "1.8 MB",
-    });
+    try {
+      const arr = capturedImage.split(",");
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      const file = new File([blob], filename, { type: mime });
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+
+      onCapture({
+        name: filename,
+        previewUrl: capturedImage,
+        size: `${sizeMB} MB`,
+        file,
+      });
+    } catch {
+      onCapture({
+        name: filename,
+        previewUrl: capturedImage,
+        size: "1.8 MB",
+      });
+    }
     onClose();
   };
 

@@ -12,22 +12,20 @@ interface HeroBannerProps {
 }
 
 export default function HeroBanner({ onStartScreening, userName }: HeroBannerProps) {
-  const [fullName, setFullName] = useState<string>(userName || "Full Name");
+  const [fetchedName, setFetchedName] = useState<string | null>(null);
+  const fullName = userName || fetchedName || "Full Name";
 
   useEffect(() => {
-    if (userName) {
-      setFullName(userName);
-      return;
-    }
+    if (userName) return;
 
     async function fetchUser() {
       try {
         const user = await getCurrentUser();
         if (user?.user_metadata?.full_name) {
-          setFullName(user.user_metadata.full_name);
+          setFetchedName(user.user_metadata.full_name);
         } else if (user?.email) {
           const namePart = user.email.split("@")[0];
-          setFullName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
+          setFetchedName(namePart.charAt(0).toUpperCase() + namePart.slice(1));
         }
       } catch (err) {
         console.error("Failed to load user name:", err);

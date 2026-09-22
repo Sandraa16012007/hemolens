@@ -17,6 +17,7 @@ export interface SelectedImageData {
   name: string;
   size: string;
   previewUrl?: string;
+  file?: File | Blob;
 }
 
 interface EyelidCaptureCardProps {
@@ -41,6 +42,7 @@ export default function EyelidCaptureCard({
         name: file.name,
         size: `${sizeMB} MB`,
         previewUrl,
+        file,
       });
     }
   };
@@ -49,11 +51,13 @@ export default function EyelidCaptureCard({
     name: string;
     previewUrl: string;
     size: string;
+    file?: File | Blob;
   }) => {
     onImageChange({
       name: captured.name,
       size: captured.size,
       previewUrl: captured.previewUrl,
+      file: captured.file,
     });
   };
 
