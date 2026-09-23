@@ -150,10 +150,16 @@ def _check_resolution(img: np.ndarray) -> tuple[bool, dict[str, Any]]:
 
 
 def _check_blur(gray: np.ndarray) -> tuple[bool, dict[str, Any]]:
-    """Variance of Laplacian blur detection. Higher variance = sharper image."""
-    variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    """Variance of Laplacian blur detection on standardized scale (max dimension 1024px)."""
+    h, w = gray.shape[:2]
+    scale = min(1.0, config.BLUR_NORM_MAX_DIM / max(h, w))
+    if scale < 1.0:
+        res = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    else:
+        res = gray
+    variance = float(cv2.Laplacian(res, cv2.CV_64F).var())
     passed = variance >= config.BLUR_THRESHOLD
-    return passed, {"laplacian_variance": round(variance, 2)}
+    return passed, {"laplacian_variance": round(variance, 2), "threshold": config.BLUR_THRESHOLD}
 
 
 def _check_brightness(gray: np.ndarray) -> tuple[bool, dict[str, Any]]:
@@ -180,52 +186,46 @@ def _get_landmark_px(
 
 def _check_closeup_eyelid(img_rgb: np.ndarray) -> tuple[bool, bool, dict[str, Any]]:
     """
-    Fallback check for macro / close-up eyelid images where full face geometry
+    Validation check for macro / close-up eyelid images where full face geometry
     is cropped out, preventing MediaPipe BlazeFace from detecting standard face landmarks.
 
     Evaluates:
-      1. Biological ocular/skin tissue dominance (R > G & R > B).
-      2. Mucosal / pink-red conjunctiva tissue presence in HSV color space.
-      3. Texture and gradient complexity to distinguish real ocular tissue from solid colors.
+      1. Sclera (white of the eye) presence.
+      2. Mucosal / pink-red palpebral conjunctival tissue presence.
     """
     img_h, img_w = img_rgb.shape[:2]
     total_pixels = img_h * img_w
 
-    r = img_rgb[:, :, 0].astype(int)
-    g = img_rgb[:, :, 1].astype(int)
-    b = img_rgb[:, :, 2].astype(int)
-
-    # Biological tissue / skin / mucosa channel dominance
-    tissue_mask = (r > g) & (r > b) & (r > 30)
-    tissue_fraction = float(np.count_nonzero(tissue_mask) / total_pixels)
-
-    # HSV color analysis for pink/red mucosal tissue & sclera
+    # Sclera (white of eye)
     hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
-    mask_red1 = cv2.inRange(hsv, np.array([0, 25, 30]), np.array([20, 255, 255]))
-    mask_red2 = cv2.inRange(hsv, np.array([155, 25, 30]), np.array([180, 255, 255]))
-    conjunctiva_mask = mask_red1 | mask_red2
-    conjunctiva_fraction = float(np.count_nonzero(conjunctiva_mask) / total_pixels)
+    sclera_mask = cv2.inRange(hsv, np.array([0, 0, 130]), np.array([180, 50, 255]))
+    sclera_px = int(np.count_nonzero(sclera_mask))
+    sclera_frac = sclera_px / total_pixels
 
-    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-    texture_std = float(np.std(gray))
+    # Palpebral conjunctival mucosa (vascular deep red/pink tissue)
+    r = img_rgb[:, :, 0].astype(float)
+    g = img_rgb[:, :, 1].astype(float)
+    b = img_rgb[:, :, 2].astype(float)
+    mucosa_mask = (r > 80) & (r - g > 30) & (r - b > 40)
+    mucosa_px = int(np.count_nonzero(mucosa_mask))
+    mucosa_frac = mucosa_px / total_pixels
 
-    has_tissue = tissue_fraction >= 0.35
-    has_conjunctiva = conjunctiva_fraction >= config.MIN_CLOSEUP_CONJUNCTIVA_FRACTION
-    has_texture = texture_std >= 12.0
+    has_sclera = (sclera_px >= config.MIN_MACRO_SCLERA_PX) or (sclera_frac >= config.MIN_MACRO_SCLERA_FRACTION)
+    has_conjunctiva = mucosa_frac >= config.MIN_MACRO_CONJUNCTIVA_FRACTION
 
-    is_closeup_eye = (has_tissue or has_conjunctiva) and has_texture
+    eye_detected = has_sclera
+    eyelid_visible = has_sclera and has_conjunctiva
 
     meta = {
         "detection_mode": "macro_closeup",
-        "tissue_fraction": round(tissue_fraction, 4),
-        "conjunctiva_fraction": round(conjunctiva_fraction, 4),
-        "texture_std": round(texture_std, 2),
-        "is_closeup_eye": is_closeup_eye,
+        "sclera_px": sclera_px,
+        "sclera_frac": round(sclera_frac, 4),
+        "mucosa_frac": round(mucosa_frac, 4),
+        "has_sclera": has_sclera,
+        "has_conjunctiva": has_conjunctiva,
     }
 
-    if is_closeup_eye:
-        return True, True, meta
-    return False, False, meta
+    return eye_detected, eyelid_visible, meta
 
 
 def _check_eye_and_eyelid(
@@ -233,13 +233,12 @@ def _check_eye_and_eyelid(
 ) -> tuple[bool, bool, dict[str, Any]]:
     """
     Run MediaPipe Face Landmarker (or fallback close-up detector) and evaluate:
-      1. eye_detection  — face/eye found and spans enough of the frame.
-      2. eyelid_visibility — eye openness (EAR) and lower-eyelid landmark spread.
+      1. eye_detection  — eye found and spans enough of the frame.
+      2. eyelid_visibility — lower eyelid and palpebral conjunctiva adequately visible.
 
     Returns (eye_detected: bool, eyelid_visible: bool, meta: dict)
     """
     if not _LANDMARKER_READY or _landmarker is None:
-        # Fallback to close-up detector if landmarker unavailable
         return _check_closeup_eyelid(img_rgb)
 
     img_h, img_w = img_rgb.shape[:2]
@@ -271,18 +270,15 @@ def _check_eye_and_eyelid(
     max_eye_width = max(right_eye_width, left_eye_width)
     eye_region_fraction = max_eye_width / img_w
 
-    eye_detected = eye_region_fraction >= config.MIN_EYE_REGION_FRACTION
+    # Ensure eye is framed large enough in the image
+    is_framed_large_enough = (max_eye_width >= config.MIN_FACE_EYE_WIDTH_PX) or (eye_region_fraction >= config.MIN_FACE_EYE_FRACTION)
 
-    if not eye_detected:
-        # Check if macro fallback succeeds before rejecting
-        c_eye, c_lid, c_meta = _check_closeup_eyelid(img_rgb)
-        if c_eye:
-            return c_eye, c_lid, c_meta
-
+    if not is_framed_large_enough:
         return False, False, {
             "face_detected": True,
+            "eye_width_px": round(max_eye_width, 1),
             "eye_region_fraction": round(eye_region_fraction, 3),
-            "min_required": config.MIN_EYE_REGION_FRACTION,
+            "framing_error": "EYELID_AREA_NOT_BIG_ENOUGH",
         }
 
     # ---- Dominant eye (larger = likely closer to camera) ----
@@ -321,6 +317,7 @@ def _check_eye_and_eyelid(
 
     return True, eyelid_visible, {
         "face_detected": True,
+        "eye_width_px": round(max_eye_width, 1),
         "eye_region_fraction": round(eye_region_fraction, 3),
         "eye_aspect_ratio": round(ear, 3),
         "eye_open": eye_open,
@@ -352,6 +349,9 @@ _ERRORS: dict[str, str] = {
     "EYE_NOT_DETECTED":
         "No eye detected in the image. Position your lower eyelid clearly "
         "in the centre of the frame and ensure your face is visible.",
+    "EYELID_AREA_NOT_BIG_ENOUGH":
+        "The eye is too far from the camera or poorly framed. Please move closer "
+        "so that your eye and lower eyelid occupy the majority of the frame.",
     "EYELID_NOT_VISIBLE":
         "The lower eyelid conjunctiva is not sufficiently exposed. Gently "
         "pull your lower eyelid downward until the pink tissue is clearly "
@@ -445,7 +445,8 @@ async def validate_image(
     checks.eyelid_visibility = eyelid_ok
 
     if not eye_ok:
-        errors.append(ValidationError(code="EYE_NOT_DETECTED", message=_ERRORS["EYE_NOT_DETECTED"]))
+        err_code = mesh_meta.get("framing_error", "EYE_NOT_DETECTED")
+        errors.append(ValidationError(code=err_code, message=_ERRORS[err_code]))
         logger.info("Eye detection failed: %s", mesh_meta)
     elif not eyelid_ok:
         errors.append(ValidationError(code="EYELID_NOT_VISIBLE", message=_ERRORS["EYELID_NOT_VISIBLE"]))
