@@ -12,12 +12,14 @@ import TrendAndHealthcare from "./components/TrendAndHealthcare";
 import RegulatorySafeguard from "./components/RegulatorySafeguard";
 import { getScreeningForReport } from "@/lib/supabase/reports";
 import { getOrCreateReport } from "@/lib/supabase/reports";
+import { useSidebar } from "../context/SidebarContext";
 import type { Screening, Report } from "@/types/database.types";
 
 function ScreeningReportContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const screeningId = searchParams.get("screeningId");
+  const { isCollapsed } = useSidebar();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [screening, setScreening] = useState<Screening | null>(null);
@@ -84,7 +86,11 @@ function ScreeningReportContent() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+          isCollapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         <DashboardHeader
           onMenuClick={() => setSidebarOpen(true)}
           breadcrumb={{

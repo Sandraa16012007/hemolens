@@ -18,9 +18,14 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 ### Stage 2 — FastAPI Backend & Processing
 
 **Eyelid CV Pipeline (primary)**
-1. `POST /api/screen/validate-image` — OpenCV checks: resolution (≥640×480), blur (variance of Laplacian), brightness/exposure.
-   - Fails → return error, prompt retake.
-   - Passes → continue.
+1. `POST /api/screen/validate-image` *(Implemented & Integrated)* — Deterministic OpenCV & MediaPipe Tasks pipeline:
+   - **Resolution Check:** width ≥ 400px, height ≥ 300px.
+   - **Standardized Blur Check:** Variance of Laplacian on 1024px scaled frame ≥ 25.0.
+   - **Exposure Window:** Mean grayscale brightness within [30, 235].
+   - **Eye Framing & Landmark Check:** MediaPipe FaceLandmarker validates eye width ≥ 300px or ≥ 30% of frame width.
+   - **Macro Eyelid / Conjunctiva Fallback:** When whole-face geometry is cropped out, validates biological ocular tissue (R > G & R > B), sclera presence (≥25,000px or ≥8% frame), and exposed palpebral conjunctival mucosa (≥1.5% frame).
+   - Fails → returns HTTP 200 with `valid: false` and actionable user guidance; blocks Supabase upload until retaken.
+   - Passes → returns HTTP 200 with `valid: true`; enables "Analyze My Screening" trigger.
 2. Lower-eyelid ROI extraction (eye/landmark detection or guided crop).
 3. Color normalization: RGB → LAB + CLAHE.
 4. Resize to 224×224 RGB tensor.

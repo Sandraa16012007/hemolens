@@ -116,7 +116,7 @@ graph TD
 | **FR-01** | User Authentication | UI Built | Sign up, login, session persistence. Backend Supabase integration in Phase 2. |
 | **FR-02** | Health Profile Onboarding | UI Built | Stores demographics, diet, symptoms, pregnancy, and medical conditions. |
 | **FR-03** | Guided Camera Capture | UI Built | Dual-capture support: lower eyelid (primary) and nail bed (optional). |
-| **FR-04** | Image Quality Validation | Phase 2 | Deterministic OpenCV checks: resolution (≥640×480), blur (variance of Laplacian), brightness/exposure. No ML training required. |
+| **FR-04** | Image Quality Validation | Implemented | Deterministic OpenCV & MediaPipe checks (`POST /api/screen/validate-image`): resolution (≥400×300), normalized blur (Laplacian variance ≥25.0 on 1024px scale), brightness window (30–235), eye framing, and palpebral conjunctiva visibility/eversion. Immediate validation on image upload/capture with quality feedback. |
 | **FR-05** | Computer Vision Preprocessing | Phase 2 | OpenCV palpebral conjunctiva ROI extraction, LAB + CLAHE color normalization, resize to 224×224; nail-bed RGB/HSV/LAB feature extraction. |
 | **FR-06** | ML Risk & Hb Estimation | Phase 2 | EfficientNet-B0 dual-head model (eyelid, primary) outputs continuous Hb regression + anemia probability; RF/XGBoost (nail, secondary) outputs Hb estimate from color features. Confidence-weighted fusion → Hb range + risk classification (Normal, Mild, Moderate, Severe). |
 | **FR-07** | Screening Report Generation | UI Built | Full report layout with metrics, contributing factors, recommendations, and disclaimer; text generated via a single LLM call from structured ML output + profile + symptoms. |
@@ -129,7 +129,7 @@ graph TD
 
 ### **In-Scope (Hackathon MVP)**
 - End-to-end web application with complete screening workflow.
-- OpenCV image preprocessing and validation pipeline.
+- OpenCV image preprocessing and validation pipeline (`POST /api/screen/validate-image` implemented & calibrated).
 - Machine Learning inference on conjunctiva images + health context.
 - Local LLM AI Assistant (Ollama / Qwen / Gemma) for health education.
 - Responsive mobile-first interface adhering to established design system.
@@ -152,7 +152,7 @@ graph TD
 - **Two-stage CV + ML design**, eyelid model as primary/quantitative, nail-bed model as optional/secondary:
 
 ```
-IMAGE(S) → OpenCV Validate (blur/brightness/resolution)
+IMAGE(S) → OpenCV & MediaPipe Validate (blur/brightness/resolution/eyelid exposure) [IMPLEMENTED]
         → ROI Extraction (conjunctiva / nail)
         → Color Normalization (LAB + CLAHE / RGB-HSV-LAB features)
         → ML Model (EfficientNet-B0 dual-head | RF/XGBoost)
@@ -172,10 +172,10 @@ IMAGE(S) → OpenCV Validate (blur/brightness/resolution)
 
 ## **7. Next Phase Roadmap (Phase 2 — Backend & ML Integration)**
 
-### **Step 1: FastAPI Backend Setup**
-- Create `backend/` directory with FastAPI application.
+### **Step 1: FastAPI Backend Setup (In Progress / Partially Implemented)**
+- Created `backend/` directory with FastAPI application (`backend/main.py`, `backend/routers/screen.py`, `backend/config.py`).
 - Setup CORS, Pydantic schemas, and endpoints:
-  - `POST /api/screen/validate-image`: Image sharpness and brightness check.
+  - `POST /api/screen/validate-image` *(Implemented & Calibrated)*: Pre-upload quality check validating resolution, standardized blur, exposure, and palpebral conjunctiva presence.
   - `POST /api/screen/analyze`: OpenCV feature extraction + ML inference (eyelid + optional nail) + fusion.
   - `POST /api/chat`: Ollama LLM endpoint with conversation context.
   - `GET/POST /api/profile` & `/api/history`: Supabase database sync.

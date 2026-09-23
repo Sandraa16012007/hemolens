@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, X } from "lucide-react";
 import Sidebar from "../components/Sidebar";
@@ -10,18 +10,22 @@ import NailBedCaptureCard from "./components/NailBedCaptureCard";
 import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
 import { createScreeningWithImages } from "@/lib/supabase/screenings";
+import { validateEyelidImage, ImageValidationState } from "@/lib/api/validation";
+import { useSidebar } from "../context/SidebarContext";
 
 export default function NewScreeningPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isCollapsed } = useSidebar();
 
-  // Form & Image State
-  const [eyelidImage, setEyelidImage] = useState<SelectedImageData | null>({
-    name: "eyelid_sample_01.jpg",
-    size: "2.4 MB",
-    previewUrl: "/assets/exampleEyelid.jpg",
-  });
+  // Form & Image State — Starts empty: asks user to upload first
+  const [eyelidImage, setEyelidImage] = useState<SelectedImageData | null>(null);
   const [nailBedImage, setNailBedImage] = useState<SelectedImageData | null>(null);
+
+  // Validation State for Lower Eyelid Image
+  const [eyelidValidation, setEyelidValidation] = useState<ImageValidationState>({
+    status: "idle",
+  });
 
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([
     "fatigue",
@@ -30,6 +34,67 @@ export default function NewScreeningPage() {
   const [otherSymptoms, setOtherSymptoms] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Active validation request cancellation token
+  const activeValidationRef = useRef<number>(0);
+
+  const performImageValidation = useCallback(async (image: SelectedImageData) => {
+    const requestId = ++activeValidationRef.current;
+    setEyelidValidation({ status: "validating" });
+    setErrorMessage(null);
+
+    const source = image.file || image.previewUrl;
+    if (!source) {
+      setEyelidValidation({
+        status: "invalid",
+        errorDetail: "No image file or preview data available to validate.",
+      });
+      return;
+    }
+
+    try {
+      const result = await validateEyelidImage(source);
+
+      // Discard stale responses if user uploaded another image while validating
+      if (requestId !== activeValidationRef.current) return;
+
+      if (result.valid) {
+        setEyelidValidation({
+          status: "valid",
+          message: "Image looks good — your lower eyelid is clearly visible and the image quality is sufficient.",
+        });
+      } else {
+        const errorDetail =
+          result.errors && result.errors.length > 0
+            ? result.errors[0].message
+            : result.message || "Image failed quality validation.";
+
+        setEyelidValidation({
+          status: "invalid",
+          message: result.message,
+          errorDetail,
+        });
+      }
+    } catch (err: unknown) {
+      if (requestId !== activeValidationRef.current) return;
+      console.error("Validation error:", err);
+      setEyelidValidation({
+        status: "error",
+        message: "Validation service is currently unavailable. Please verify your backend server.",
+      });
+    }
+  }, []);
+
+  // Validate on image change
+  const handleEyelidImageChange = (newImage: SelectedImageData | null) => {
+    setEyelidImage(newImage);
+    if (!newImage) {
+      activeValidationRef.current++;
+      setEyelidValidation({ status: "idle" });
+    } else {
+      performImageValidation(newImage);
+    }
+  };
 
   const handleToggleSymptom = (id: string) => {
     if (id === "no_symptoms") {
@@ -50,7 +115,13 @@ export default function NewScreeningPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!eyelidImage) return;
+    // Strict quality gate: never upload unvalidated or rejected images to Supabase
+    if (!eyelidImage || eyelidValidation.status !== "valid") {
+      setErrorMessage("Please ensure your lower-eyelid image passes quality validation before proceeding.");
+      return;
+    }
+
+    if (isLoading || (eyelidValidation.status as string) === "validating") return;
 
     setIsLoading(true);
     setErrorMessage(null);
@@ -90,7 +161,11 @@ export default function NewScreeningPage() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+          isCollapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Top Header with Breadcrumb */}
         <DashboardHeader
           onMenuClick={() => setSidebarOpen(true)}
@@ -109,7 +184,7 @@ export default function NewScreeningPage() {
               <div className="flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-primary">Screening Submission Error</p>
+                  <p className="font-semibold text-primary">Screening Submission Notice</p>
                   <p className="text-primary/90 mt-0.5">{errorMessage}</p>
                 </div>
               </div>
@@ -129,14 +204,16 @@ export default function NewScreeningPage() {
               Let&apos;s check your current anemia risk
             </h1>
             <p className="text-xs sm:text-sm text-muted">
-              Follow the steps below. Your lower-eyelid image is required to run the AI screening model.
+              Follow the steps below. Your lower-eyelid image is verified for quality before running the screening model.
             </p>
           </div>
 
           {/* Step 1: Lower-eyelid image (Required) */}
           <EyelidCaptureCard
             imageData={eyelidImage}
-            onImageChange={setEyelidImage}
+            onImageChange={handleEyelidImageChange}
+            validationState={eyelidValidation}
+            onRetryValidation={() => eyelidImage && performImageValidation(eyelidImage)}
           />
 
           {/* Step 2: Nail-bed image (Optional) */}
@@ -156,6 +233,8 @@ export default function NewScreeningPage() {
           {/* Bottom Action Bar */}
           <ScreeningBottomBar
             hasEyelidImage={!!eyelidImage}
+            isValid={eyelidValidation.status === "valid"}
+            isValidating={eyelidValidation.status === "validating"}
             isLoading={isLoading}
             onAnalyze={handleAnalyze}
           />

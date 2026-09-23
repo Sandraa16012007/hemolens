@@ -13,6 +13,8 @@ export const metadata: Metadata = {
     "Check your anemia risk using a non-invasive smartphone image of your lower eyelid. Get calibrated clinical wellness guidance in minutes with AI-powered analysis.",
 };
 
+import { SidebarProvider } from "./context/SidebarContext";
+
 export default function RootLayout({
   children,
 }: {
@@ -20,7 +22,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SidebarProvider>{children}</SidebarProvider>
+      </body>
     </html>
   );
 }

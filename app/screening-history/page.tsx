@@ -8,9 +8,11 @@ import PreviousScreeningsList from "./components/PreviousScreeningsList";
 import TrendAndClinicalHelp from "./components/TrendAndClinicalHelp";
 import HistoryImportantNote from "./components/HistoryImportantNote";
 import { ShieldCheck } from "lucide-react";
+import { useSidebar } from "../context/SidebarContext";
 
 export default function ScreeningHistoryPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isCollapsed } = useSidebar();
 
   return (
     <div
@@ -24,7 +26,11 @@ export default function ScreeningHistoryPage() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+          isCollapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Top Header */}
         <DashboardHeader
           breadcrumb={{

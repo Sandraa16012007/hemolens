@@ -9,8 +9,11 @@ import SuggestedPrompts from "./components/SuggestedPrompts";
 import ChatInputBar from "./components/ChatInputBar";
 import ChatDisclaimer from "./components/ChatDisclaimer";
 
+import { useSidebar } from "../context/SidebarContext";
+
 export default function AIAssistantPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isCollapsed } = useSidebar();
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -136,7 +139,11 @@ export default function AIAssistantPage() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+          isCollapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Top Header with Breadcrumb */}
         <DashboardHeader
           onMenuClick={() => setSidebarOpen(true)}
