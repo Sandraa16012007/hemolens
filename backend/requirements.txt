@@ -4,3 +4,13 @@ python-multipart>=0.0.9
 python-dotenv>=1.0.0
 pydantic>=2.7.0
 google-genai>=1.0.0
+
+# Computer Vision — image validation pipeline
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+
+# Face Mesh — eye/eyelid landmark detection (no custom training)
+# Pinned to 0.10.35 — last version with bundled model support for Windows Python 3.14
+# (1.0.x dropped mp.solutions; Tasks API requires model file download, handled in screen.py)
+mediapipe==0.10.35
+protobuf>=3.20.0
