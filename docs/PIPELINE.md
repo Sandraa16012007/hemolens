@@ -18,7 +18,7 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 ### Stage 2 — FastAPI Backend & Processing
 
 **Eyelid CV Pipeline (primary)**
-1. `POST /api/screen/validate-image` *(Implemented & Integrated)* — Deterministic OpenCV & MediaPipe Tasks pipeline:
+1. `POST /api/screen/validate-image-eyelid` *(Implemented & Integrated)* — Deterministic OpenCV & MediaPipe Tasks pipeline:
    - **Resolution Check:** width ≥ 400px, height ≥ 300px.
    - **Standardized Blur Check:** Variance of Laplacian on 1024px scaled frame ≥ 25.0.
    - **Exposure Window:** Mean grayscale brightness within [30, 235].
@@ -31,7 +31,14 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 4. Resize to 224×224 RGB tensor.
 
 **Nail-Bed CV Pipeline (optional, secondary)**
-1. Nail image upload.
+1. `POST /api/screen/validate-image-nail` *(Implemented & Integrated)* — Deterministic multi-cue OpenCV validation pipeline:
+   - **Resolution Check:** width ≥ 400px, height ≥ 300px.
+   - **Skin-Edge Sharpness Check:** Sobel gradient Tenengrad on segmented hand/skin regions ≥ 350.0 (prevents blurred/out-of-focus nail shots).
+   - **Exposure Window:** Mean grayscale brightness within [30, 235].
+   - **Fingernail Count & Visibility Check:** Multi-scale Top-Hat + localized contrast and inclusive skin chrominance segmentation (HSV + YCrCb). Requires **≥ 3 clearly visible fingernails** (each ≥ 0.9% of frame area, solidity ≥ 0.40).
+   - **Zoom & Framing Check:** Rejects zoomed-out hand/body shots where individual nails are too small for pallor analysis.
+   - Fails → returns HTTP 200 with `valid: false` and retake/skip actions.
+   - Passes → returns HTTP 200 with `valid: true` and detected `nail_count`.
 2. Nail ROI extraction.
 3. Extract RGB/HSV/LAB statistics + red/blue pixel ratios (feature engineering, not deep learning).
 

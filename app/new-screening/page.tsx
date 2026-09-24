@@ -10,7 +10,7 @@ import NailBedCaptureCard from "./components/NailBedCaptureCard";
 import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
 import { createScreeningWithImages } from "@/lib/supabase/screenings";
-import { validateEyelidImage, ImageValidationState } from "@/lib/api/validation";
+import { validateEyelidImage, validateNailImage, ImageValidationState } from "@/lib/api/validation";
 import { useSidebar } from "../context/SidebarContext";
 
 export default function NewScreeningPage() {
@@ -27,6 +27,11 @@ export default function NewScreeningPage() {
     status: "idle",
   });
 
+  // Validation State for Nail-bed Image (optional)
+  const [nailValidation, setNailValidation] = useState<ImageValidationState>({
+    status: "idle",
+  });
+
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([
     "fatigue",
     "pale_skin",
@@ -35,8 +40,9 @@ export default function NewScreeningPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Active validation request cancellation token
+  // Active validation request cancellation tokens
   const activeValidationRef = useRef<number>(0);
+  const activeNailValidationRef = useRef<number>(0);
 
   const performImageValidation = useCallback(async (image: SelectedImageData) => {
     const requestId = ++activeValidationRef.current;
@@ -85,7 +91,55 @@ export default function NewScreeningPage() {
     }
   }, []);
 
-  // Validate on image change
+  // Nail-bed validation callback (mirrors eyelid pattern)
+  const performNailValidation = useCallback(async (image: SelectedImageData) => {
+    const requestId = ++activeNailValidationRef.current;
+    setNailValidation({ status: "validating" });
+    setErrorMessage(null);
+
+    const source = image.file || image.previewUrl;
+    if (!source) {
+      setNailValidation({
+        status: "invalid",
+        errorDetail: "No image file or preview data available to validate.",
+      });
+      return;
+    }
+
+    try {
+      const result = await validateNailImage(source);
+
+      // Discard stale responses if user uploaded another image while validating
+      if (requestId !== activeNailValidationRef.current) return;
+
+      if (result.valid) {
+        setNailValidation({
+          status: "valid",
+          message: result.message || `Nail image looks good — ${result.nail_count} fingernail(s) detected.`,
+        });
+      } else {
+        const errorDetail =
+          result.errors && result.errors.length > 0
+            ? result.errors[0].message
+            : result.message || "Nail image failed quality validation.";
+
+        setNailValidation({
+          status: "invalid",
+          message: result.message,
+          errorDetail,
+        });
+      }
+    } catch (err: unknown) {
+      if (requestId !== activeNailValidationRef.current) return;
+      console.error("Nail validation error:", err);
+      setNailValidation({
+        status: "error",
+        message: "Nail validation service is currently unavailable. Please verify your backend server.",
+      });
+    }
+  }, []);
+
+  // Validate eyelid on image change
   const handleEyelidImageChange = (newImage: SelectedImageData | null) => {
     setEyelidImage(newImage);
     if (!newImage) {
@@ -93,6 +147,17 @@ export default function NewScreeningPage() {
       setEyelidValidation({ status: "idle" });
     } else {
       performImageValidation(newImage);
+    }
+  };
+
+  // Validate nail on image change
+  const handleNailImageChange = (newImage: SelectedImageData | null) => {
+    setNailBedImage(newImage);
+    if (!newImage) {
+      activeNailValidationRef.current++;
+      setNailValidation({ status: "idle" });
+    } else {
+      performNailValidation(newImage);
     }
   };
 
@@ -121,7 +186,13 @@ export default function NewScreeningPage() {
       return;
     }
 
-    if (isLoading || (eyelidValidation.status as string) === "validating") return;
+    // If a nail image was provided, it must also pass validation (or be removed)
+    if (nailBedImage && nailValidation.status !== "valid") {
+      setErrorMessage("Your nail-bed image failed quality validation. Please retake, upload a new image, or remove it to proceed.");
+      return;
+    }
+
+    if (isLoading || (eyelidValidation.status as string) === "validating" || (nailValidation.status as string) === "validating") return;
 
     setIsLoading(true);
     setErrorMessage(null);
@@ -219,7 +290,9 @@ export default function NewScreeningPage() {
           {/* Step 2: Nail-bed image (Optional) */}
           <NailBedCaptureCard
             imageData={nailBedImage}
-            onImageChange={setNailBedImage}
+            onImageChange={handleNailImageChange}
+            validationState={nailValidation}
+            onRetryValidation={() => nailBedImage && performNailValidation(nailBedImage)}
           />
 
           {/* Step 3: Current symptoms */}
@@ -233,8 +306,14 @@ export default function NewScreeningPage() {
           {/* Bottom Action Bar */}
           <ScreeningBottomBar
             hasEyelidImage={!!eyelidImage}
-            isValid={eyelidValidation.status === "valid"}
-            isValidating={eyelidValidation.status === "validating"}
+            isValid={
+              eyelidValidation.status === "valid" &&
+              (!nailBedImage || nailValidation.status === "valid")
+            }
+            isValidating={
+              eyelidValidation.status === "validating" ||
+              nailValidation.status === "validating"
+            }
             isLoading={isLoading}
             onAnalyze={handleAnalyze}
           />

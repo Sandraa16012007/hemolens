@@ -66,11 +66,10 @@ export default function ChatInputBar({
       <button
         type="button"
         onClick={handleMicToggle}
-        className={`p-2 rounded-xl transition-all ${
-          isListening
+        className={`p-2 rounded-xl transition-all ${isListening
             ? "bg-rose-100 text-primary animate-pulse ring-2 ring-primary/30"
             : "text-muted hover:text-heading hover:bg-surface"
-        }`}
+          }`}
         title={isListening ? "Listening..." : "Voice input"}
       >
         <Mic className="w-4 h-4" />

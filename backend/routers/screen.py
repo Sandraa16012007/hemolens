@@ -364,7 +364,7 @@ _ERRORS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 @router.post(
-    "/validate-image",
+    "/validate-image-eyelid",
     response_model=ValidationResponse,
     summary="Validate an eyelid image for quality before analysis",
     description=(
@@ -375,7 +375,7 @@ _ERRORS: dict[str, str] = {
         "determine pass/fail. No image data is stored or forwarded to Supabase."
     ),
 )
-async def validate_image(
+async def validate_image_eyelid(
     image: UploadFile = File(..., description="Lower-eyelid image (JPEG/PNG/WebP)"),
 ) -> ValidationResponse:
     checks = ChecksResult()
@@ -478,3 +478,243 @@ async def validate_image(
         checks=checks,
         errors=errors,
     )
+
+
+# ===========================================================================
+# NAIL-BED IMAGE VALIDATION
+# ===========================================================================
+
+class NailChecksResult(BaseModel):
+    resolution: bool = False
+    blur: bool = False
+    brightness: bool = False
+    nail_detection: bool = False
+    nail_quality: bool = False
+
+
+class NailValidationResponse(BaseModel):
+    valid: bool
+    message: str
+    checks: NailChecksResult
+    errors: list[ValidationError]
+    nail_count: int = 0
+
+
+def _check_nail_blur(img_bgr: np.ndarray, gray: np.ndarray) -> tuple[bool, dict[str, Any]]:
+    """Standardized sharpness check tailored for skin & nail bed regions."""
+    h, w = gray.shape[:2]
+    scale = min(1.0, config.BLUR_NORM_MAX_DIM / max(h, w))
+    res = cv2.resize(gray, (int(w * scale), int(h * scale))) if scale < 1.0 else gray
+
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    ycrcb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YCrCb)
+    skin = cv2.bitwise_or(
+        cv2.inRange(hsv, (0, 10, 30), (35, 255, 255)),
+        cv2.inRange(ycrcb, (0, 125, 70), (255, 185, 140)),
+    )
+    skin_res = cv2.resize(skin, (res.shape[1], res.shape[0])) if scale < 1.0 else skin
+
+    gx = cv2.Sobel(res, cv2.CV_64F, 1, 0)
+    gy = cv2.Sobel(res, cv2.CV_64F, 0, 1)
+    mag = np.hypot(gx, gy)
+    skin_mag = mag[skin_res > 0]
+
+    tenengrad = float((skin_mag**2).mean()) if len(skin_mag) > 0 else 0.0
+    passed = tenengrad >= config.NAIL_BLUR_THRESHOLD
+    return passed, {"tenengrad": round(tenengrad, 1), "threshold": config.NAIL_BLUR_THRESHOLD}
+
+
+def _detect_nail_candidates(img_bgr: np.ndarray) -> list[dict[str, Any]]:
+    """
+    Detects fingernail candidates using robust multi-cue OpenCV processing:
+    1. Broad skin segmentation (HSV + YCrCb) covering all skin complexions.
+    2. Multi-scale localized contrast (Top-Hat + DoG) to capture
+       nail plates regardless of hand pose, lighting, or skin tone.
+    3. Geometric filtering (area, aspect ratio, solidity, boundary check).
+    4. Non-maximum suppression to merge overlapping candidate boxes.
+    """
+    img_h, img_w = img_bgr.shape[:2]
+    total_area = img_h * img_w
+
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    ycrcb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YCrCb)
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+
+    skin = cv2.bitwise_or(
+        cv2.inRange(hsv, (0, 10, 30), (35, 255, 255)),
+        cv2.inRange(ycrcb, (0, 125, 70), (255, 185, 140)),
+    )
+
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    L_chan = lab[:, :, 0]
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    L_enh = clahe.apply(L_chan)
+    k_nail = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(9, int(img_w * 0.05)) | 1, max(9, int(img_h * 0.05)) | 1))
+    tophat = cv2.morphologyEx(L_enh, cv2.MORPH_TOPHAT, k_nail)
+    _, th_tophat = cv2.threshold(tophat, 10, 255, cv2.THRESH_BINARY)
+
+    blur_large = cv2.GaussianBlur(gray, (int(img_w * 0.08) | 1, int(img_h * 0.08) | 1), 0)
+    diff = cv2.subtract(gray, blur_large)
+    _, th_diff = cv2.threshold(diff, 5, 255, cv2.THRESH_BINARY)
+
+    combined = cv2.bitwise_or(th_tophat, th_diff)
+    combined = cv2.bitwise_and(combined, skin)
+
+    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    clean_mask = cv2.morphologyEx(combined, cv2.MORPH_OPEN, k_clean)
+    clean_mask = cv2.morphologyEx(clean_mask, cv2.MORPH_CLOSE, k_clean)
+
+    contours, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    raw_candidates = []
+    min_area_px = max(config.NAIL_MIN_CONTOUR_AREA_PX, int(total_area * config.NAIL_MIN_CONTOUR_AREA_FRACTION))
+    max_area_px = int(total_area * config.NAIL_MAX_CONTOUR_AREA_FRACTION)
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < min_area_px or area > max_area_px:
+            continue
+        x, y, bw, bh = cv2.boundingRect(cnt)
+
+        # Exclude giant boundary artifacts spanning full top-to-bottom
+        if y == 0 and (y + bh) >= (img_h - 2):
+            continue
+        if (x == 0 or x + bw >= img_w) and y == 0 and area > total_area * 0.04:
+            continue
+
+        aspect = bw / (bh + 1e-6)
+        if aspect < config.NAIL_MIN_ASPECT_RATIO or aspect > config.NAIL_MAX_ASPECT_RATIO:
+            continue
+        hull = cv2.convexHull(cnt)
+        hull_area = cv2.contourArea(hull)
+        solidity = area / (hull_area + 1e-6)
+        if solidity < config.NAIL_MIN_SOLIDITY:
+            continue
+
+        raw_candidates.append({
+            "bbox": (int(x), int(y), int(bw), int(bh)),
+            "area": int(area),
+            "area_frac": round(area / total_area, 5),
+            "aspect": round(aspect, 2),
+            "solidity": round(solidity, 2),
+            "center": (int(x + bw // 2), int(y + bh // 2)),
+        })
+
+    raw_candidates.sort(key=lambda c: c["area"], reverse=True)
+    nms_candidates: list[dict[str, Any]] = []
+
+    for cand in raw_candidates:
+        cx1, cy1 = cand["center"]
+        x1, y1, w1, h1 = cand["bbox"]
+        overlap = False
+        for kept in nms_candidates:
+            cx2, cy2 = kept["center"]
+            dist = np.hypot(cx1 - cx2, cy1 - cy2)
+            if dist < max(min(w1, h1), 30):
+                overlap = True
+                break
+        if not overlap:
+            nms_candidates.append(cand)
+
+    return nms_candidates
+
+
+def _check_nail_detection(img_bgr: np.ndarray) -> tuple[bool, bool, int, dict[str, Any]]:
+    """
+    Verifies that AT LEAST 3 clearly visible fingernails are present and sufficiently large.
+    Returns:
+        (nail_detected, nail_quality_ok, nail_count, meta)
+    """
+    candidates = _detect_nail_candidates(img_bgr)
+    nail_count = len(candidates)
+    meta: dict[str, Any] = {
+        "nail_count": nail_count,
+        "candidates": candidates,
+    }
+
+    if nail_count < config.NAIL_MIN_COUNT:
+        meta["rejection_reason"] = "NO_NAIL_DETECTED" if nail_count == 0 else "NAILS_TOO_SMALL"
+        return False, False, nail_count, meta
+
+    return True, True, nail_count, meta
+
+
+_NAIL_ERRORS: dict[str, str] = {
+    "DECODE_FAILED": "Could not read the image file. Please upload a valid JPEG or PNG.",
+    "RESOLUTION_TOO_LOW": f"Image resolution is too low (minimum: {config.MIN_WIDTH}×{config.MIN_HEIGHT} px).",
+    "IMAGE_TOO_BLURRY": "Image is too blurry. Hold the camera steady, ensure good lighting, and tap to focus.",
+    "IMAGE_TOO_DARK": "Image is too dark. Move to a well-lit area before retaking.",
+    "IMAGE_OVEREXPOSED": "Image is overexposed. Avoid direct glare and retake.",
+    "NO_NAIL_DETECTED": "Fewer than 3 fingernails detected. Please capture at least 3 clearly visible fingernails.",
+    "NAILS_TOO_SMALL": "Fingernails are too small or far away. Move the camera closer to show at least 3 clear fingernails.",
+    "NAIL_QUALITY_POOR": "The fingernail regions are unclear. Ensure nails are clean, unpolished, and in-frame.",
+}
+
+
+@router.post(
+    "/validate-image-nail",
+    response_model=NailValidationResponse,
+    summary="Validate a nail-bed image for quality before analysis",
+)
+@router.post(
+    "/validate-nail-image",
+    response_model=NailValidationResponse,
+    include_in_schema=False,
+)
+async def validate_image_nail(
+    image: UploadFile = File(..., description="Nail-bed image (JPEG/PNG/WebP)"),
+) -> NailValidationResponse:
+    checks = NailChecksResult()
+    errors: list[ValidationError] = []
+
+    try:
+        raw_bytes = await image.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Could not read the uploaded file.") from exc
+
+    img_bgr = _decode_image(raw_bytes)
+    if img_bgr is None:
+        errors.append(ValidationError(code="DECODE_FAILED", message=_NAIL_ERRORS["DECODE_FAILED"]))
+        return NailValidationResponse(valid=False, message="Image could not be decoded.", checks=checks, errors=errors, nail_count=0)
+
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+
+    res_ok, res_meta = _check_resolution(img_bgr)
+    checks.resolution = res_ok
+    if not res_ok:
+        errors.append(ValidationError(code="RESOLUTION_TOO_LOW", message=_NAIL_ERRORS["RESOLUTION_TOO_LOW"]))
+
+    blur_ok, blur_meta = _check_nail_blur(img_bgr, gray)
+    checks.blur = blur_ok
+    if not blur_ok:
+        errors.append(ValidationError(code="IMAGE_TOO_BLURRY", message=_NAIL_ERRORS["IMAGE_TOO_BLURRY"]))
+
+    bright_ok, bright_meta = _check_brightness(gray)
+    checks.brightness = bright_ok
+    if not bright_ok:
+        code = "IMAGE_OVEREXPOSED" if bright_meta["overexposed"] else "IMAGE_TOO_DARK"
+        errors.append(ValidationError(code=code, message=_NAIL_ERRORS[code]))
+
+    try:
+        nail_ok, quality_ok, nail_count, nail_meta = _check_nail_detection(img_bgr)
+    except Exception as exc:
+        logger.exception("Nail detection error: %s", exc)
+        nail_ok, quality_ok, nail_count, nail_meta = False, False, 0, {"error": str(exc)}
+
+    checks.nail_detection = nail_ok
+    checks.nail_quality = quality_ok
+
+    if not nail_ok:
+        rejection = nail_meta.get("rejection_reason", "NO_NAIL_DETECTED")
+        err_code = rejection if rejection in _NAIL_ERRORS else "NO_NAIL_DETECTED"
+        errors.append(ValidationError(code=err_code, message=_NAIL_ERRORS[err_code]))
+    elif not quality_ok:
+        rejection = nail_meta.get("rejection_reason", "NAILS_TOO_SMALL")
+        err_code = rejection if rejection in _NAIL_ERRORS else "NAILS_TOO_SMALL"
+        errors.append(ValidationError(code=err_code, message=_NAIL_ERRORS[err_code]))
+
+    valid = not errors
+    msg = f"Nail image passed all quality checks." if valid else f"Nail image failed {len(errors)} quality check(s)."
+    return NailValidationResponse(valid=valid, message=msg, checks=checks, errors=errors, nail_count=nail_count)
+

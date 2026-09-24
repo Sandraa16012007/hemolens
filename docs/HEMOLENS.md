@@ -116,7 +116,7 @@ graph TD
 | **FR-01** | User Authentication | UI Built | Sign up, login, session persistence. Backend Supabase integration in Phase 2. |
 | **FR-02** | Health Profile Onboarding | UI Built | Stores demographics, diet, symptoms, pregnancy, and medical conditions. |
 | **FR-03** | Guided Camera Capture | UI Built | Dual-capture support: lower eyelid (primary) and nail bed (optional). |
-| **FR-04** | Image Quality Validation | Implemented | Deterministic OpenCV & MediaPipe checks (`POST /api/screen/validate-image`): resolution (≥400×300), normalized blur (Laplacian variance ≥25.0 on 1024px scale), brightness window (30–235), eye framing, and palpebral conjunctiva visibility/eversion. Immediate validation on image upload/capture with quality feedback. |
+| **FR-04** | Image Quality Validation | Implemented | Deterministic OpenCV & MediaPipe checks:<br>• **Eyelid (`POST /api/screen/validate-image-eyelid`):** resolution (≥400×300), normalized blur (Laplacian variance ≥25.0 on 1024px scale), brightness window (30–235), eye framing, and palpebral conjunctiva visibility/eversion.<br>• **Nail-bed (`POST /api/screen/validate-image-nail`):** resolution (≥400×300), skin-edge sharpness (Tenengrad ≥350.0), brightness window (30–235), and multi-cue fingernail detection requiring ≥ 3 clearly visible, non-zoomed-out fingernails.<br>Immediate validation on image upload/capture with interactive quality feedback. |
 | **FR-05** | Computer Vision Preprocessing | Phase 2 | OpenCV palpebral conjunctiva ROI extraction, LAB + CLAHE color normalization, resize to 224×224; nail-bed RGB/HSV/LAB feature extraction. |
 | **FR-06** | ML Risk & Hb Estimation | Phase 2 | EfficientNet-B0 dual-head model (eyelid, primary) outputs continuous Hb regression + anemia probability; RF/XGBoost (nail, secondary) outputs Hb estimate from color features. Confidence-weighted fusion → Hb range + risk classification (Normal, Mild, Moderate, Severe). |
 | **FR-07** | Screening Report Generation | UI Built | Full report layout with metrics, contributing factors, recommendations, and disclaimer; text generated via a single LLM call from structured ML output + profile + symptoms. |
@@ -129,7 +129,7 @@ graph TD
 
 ### **In-Scope (Hackathon MVP)**
 - End-to-end web application with complete screening workflow.
-- OpenCV image preprocessing and validation pipeline (`POST /api/screen/validate-image` implemented & calibrated).
+- OpenCV image preprocessing and validation pipeline (`POST /api/screen/validate-image-eyelid` & `POST /api/screen/validate-image-nail` implemented & calibrated).
 - Machine Learning inference on conjunctiva images + health context.
 - Local LLM AI Assistant (Ollama / Qwen / Gemma) for health education.
 - Responsive mobile-first interface adhering to established design system.

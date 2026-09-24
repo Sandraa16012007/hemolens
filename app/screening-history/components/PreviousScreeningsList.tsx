@@ -93,11 +93,10 @@ export default function PreviousScreeningsList() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: idx * 0.06 }}
             whileHover={{ y: -2, boxShadow: "0 6px 20px rgba(0,0,0,0.04)" }}
-            className={`rounded-2xl border bg-white p-5 sm:p-6 transition-all relative overflow-hidden ${
-              screening.isLatest
+            className={`rounded-2xl border bg-white p-5 sm:p-6 transition-all relative overflow-hidden ${screening.isLatest
                 ? "border-border border-l-4 border-l-primary"
                 : "border-border"
-            }`}
+              }`}
           >
             {/* Top row: Date + Badges */}
             <div className="flex items-center justify-between gap-3 mb-2.5 flex-wrap">
