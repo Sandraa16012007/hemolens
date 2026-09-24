@@ -49,7 +49,9 @@ __pycache__/
 venv/
 backend/models/
 backend/tests
+backend/storage/
 
+/public/assets/test-images
 /public/assets/test-images-eyelid
 /public/assets/test-images-nail
 

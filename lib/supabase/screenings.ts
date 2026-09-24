@@ -10,6 +10,13 @@ export interface ImagePayload {
 export interface CreateScreeningInput {
   eyelidImage: ImagePayload;
   nailBedImage?: ImagePayload | null;
+  /** Phase 2: ROI-marked eyelid image (generated via POST /extract-eyelid-features) */
+  eyelidRoiImage?: ImagePayload | null;
+  /** Phase 2 passthrough: teammate-generated ROI-marked nailbed image */
+  nailbedRoiImage?: ImagePayload | null;
+  /** Alternative: base64 data URL for ROI images (convenience) */
+  eyelidRoiBase64?: string | null;
+  nailbedRoiBase64?: string | null;
   symptoms?: ScreeningSymptoms | null;
 }
 
@@ -65,12 +72,52 @@ async function resolveImageBlob(
 }
 
 /**
+ * Convert base64 data URL (e.g. data:image/jpeg;base64,...) to Blob + extension.
+ */
+function base64DataUrlToBlob(dataUrl: string): { blob: Blob; ext: string; contentType: string } {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error("Invalid base64 data URL");
+  const contentType = match[1];
+  const b64 = match[2];
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: contentType });
+  const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+  return { blob, ext, contentType };
+}
+
+function resolveRoiPayload(
+  imagePayload: ImagePayload | null | undefined,
+  base64: string | null | undefined,
+  defaultName: string
+): Promise<{ blob: Blob; ext: string; contentType: string } | null> {
+  if (imagePayload && (imagePayload.file || imagePayload.previewUrl)) {
+    return resolveImageBlob(imagePayload, defaultName);
+  }
+  if (base64) {
+    try {
+      const { blob, ext, contentType } = base64DataUrlToBlob(base64);
+      return Promise.resolve({ blob, ext, contentType });
+    } catch (e) {
+      console.warn(`Failed to parse ROI base64 for ${defaultName}:`, e);
+      return Promise.resolve(null);
+    }
+  }
+  return Promise.resolve(null);
+}
+
+/**
  * Uploads screening images to Supabase Storage ('screening-images' bucket)
  * and creates a screening record in public.screenings with strict ownership.
  */
 export async function createScreeningWithImages({
   eyelidImage,
   nailBedImage,
+  eyelidRoiImage,
+  nailbedRoiImage,
+  eyelidRoiBase64,
+  nailbedRoiBase64,
   symptoms,
 }: CreateScreeningInput): Promise<{ data: Screening | null; error: Error | null }> {
   const supabase = createClient();
@@ -140,7 +187,55 @@ export async function createScreeningWithImages({
       nailbedPublicUrl = nailUrl;
     }
 
-    // 4. Insert row into public.screenings
+    // 3b. Prepare Eyelid ROI Image (Phase 2) — optional but preferred
+    let eyelidRoiPath: string | null = null;
+    let eyelidRoiPublicUrl: string | null = null;
+    const eyelidRoiResolved = await resolveRoiPayload(eyelidRoiImage, eyelidRoiBase64, "eyelid_roi.jpg");
+    if (eyelidRoiResolved) {
+      eyelidRoiPath = `${userId}/${screeningId}/eyelid_roi.${eyelidRoiResolved.ext}`;
+      const { error: roiUploadError } = await supabase.storage
+        .from("screening-images")
+        .upload(eyelidRoiPath, eyelidRoiResolved.blob, {
+          contentType: eyelidRoiResolved.contentType,
+          upsert: true,
+        });
+      if (roiUploadError) {
+        console.warn(`Failed to upload eyelid ROI image (non-fatal): ${roiUploadError.message}`);
+        eyelidRoiPath = null;
+      } else {
+        uploadedPaths.push(eyelidRoiPath);
+        const {
+          data: { publicUrl: roiUrl },
+        } = supabase.storage.from("screening-images").getPublicUrl(eyelidRoiPath);
+        eyelidRoiPublicUrl = roiUrl;
+      }
+    }
+
+    // 3c. Prepare Nail-bed ROI Image (Phase 2 passthrough, teammate)
+    let nailbedRoiPath: string | null = null;
+    let nailbedRoiPublicUrl: string | null = null;
+    const nailbedRoiResolved = await resolveRoiPayload(nailbedRoiImage, nailbedRoiBase64, "nailbed_roi.jpg");
+    if (nailbedRoiResolved) {
+      nailbedRoiPath = `${userId}/${screeningId}/nailbed_roi.${nailbedRoiResolved.ext}`;
+      const { error: nailRoiUploadError } = await supabase.storage
+        .from("screening-images")
+        .upload(nailbedRoiPath, nailbedRoiResolved.blob, {
+          contentType: nailbedRoiResolved.contentType,
+          upsert: true,
+        });
+      if (nailRoiUploadError) {
+        console.warn(`Failed to upload nailbed ROI image (non-fatal): ${nailRoiUploadError.message}`);
+        nailbedRoiPath = null;
+      } else {
+        uploadedPaths.push(nailbedRoiPath);
+        const {
+          data: { publicUrl: nailRoiUrl },
+        } = supabase.storage.from("screening-images").getPublicUrl(nailbedRoiPath);
+        nailbedRoiPublicUrl = nailRoiUrl;
+      }
+    }
+
+    // 4. Insert row into public.screenings (including Phase 2 ROI urls)
     const screeningPayload: ScreeningInsert = {
       id: screeningId,
       user_id: userId,
@@ -148,6 +243,10 @@ export async function createScreeningWithImages({
       eyelid_image_url: eyelidPublicUrl,
       nailbed_image_path: nailbedPath,
       nailbed_image_url: nailbedPublicUrl,
+      eyelid_roi_image_path: eyelidRoiPath,
+      eyelid_roi_image_url: eyelidRoiPublicUrl,
+      nailbed_roi_image_path: nailbedRoiPath,
+      nailbed_roi_image_url: nailbedRoiPublicUrl,
       symptoms: (symptoms || null) as unknown as Json,
       status: "uploaded",
     };
