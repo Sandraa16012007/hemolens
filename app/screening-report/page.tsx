@@ -136,10 +136,12 @@ function ScreeningReportContent() {
                 reportStatus={report?.status ?? "pending"}
               />
 
-              {/* 2. Top Metrics + Images */}
+              {/* 2. Top Metrics + Images — Phase 2: Original ↓ ROI-Marked for both */}
               <TopMetricsGrid
                 eyelidImageUrl={screening?.eyelid_image_url ?? null}
+                eyelidRoiMarkedUrl={screening?.eyelid_roi_image_url ?? null}
                 nailbedImageUrl={screening?.nailbed_image_url ?? null}
+                nailbedRoiMarkedUrl={screening?.nailbed_roi_image_url ?? null}
                 reportStatus={report?.status ?? "pending"}
               />
 

@@ -11,6 +11,7 @@ import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
 import { createScreeningWithImages } from "@/lib/supabase/screenings";
 import { validateEyelidImage, validateNailImage, ImageValidationState } from "@/lib/api/validation";
+import { extractEyelidFeatures } from "@/lib/api/eyelidFeatures";
 import { useSidebar } from "../context/SidebarContext";
 
 export default function NewScreeningPage() {
@@ -197,10 +198,29 @@ export default function NewScreeningPage() {
     setIsLoading(true);
     setErrorMessage(null);
 
+    // Phase 2: Extract eyelid ROI (deterministic, never blocks screening on failure)
+    let eyelidRoiBase64: string | null = null;
+    try {
+      const source = eyelidImage.file || eyelidImage.previewUrl;
+      if (source) {
+        const feat = await extractEyelidFeatures(source as File | Blob | string);
+        if (feat.success && (feat as { roi_marked_image_base64?: string }).roi_marked_image_base64) {
+          eyelidRoiBase64 = (feat as { roi_marked_image_base64: string }).roi_marked_image_base64;
+        } else {
+          console.warn("Eyelid ROI extraction did not yield ROI-marked image:", (feat as { reason?: string }).reason);
+        }
+      }
+    } catch (roiErr) {
+      console.warn("Eyelid ROI extraction failed (non-fatal, proceeding without ROI):", roiErr);
+    }
+
     try {
       const { data, error } = await createScreeningWithImages({
         eyelidImage,
         nailBedImage,
+        // Phase 2: pass ROI-marked image so report can render Original ↓ ROI-Marked
+        eyelidRoiBase64: eyelidRoiBase64 ?? undefined,
+        // nailbed ROI is teammate passthrough — currently null, will be populated when nail pipeline lands
         symptoms: {
           selected: selectedSymptoms,
           other: otherSymptoms.trim() || undefined,

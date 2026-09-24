@@ -84,6 +84,10 @@ export interface Database {
           symptoms: Json | null;
           status: string;
           created_at: string;
+          eyelid_roi_image_path: string | null;
+          eyelid_roi_image_url: string | null;
+          nailbed_roi_image_path: string | null;
+          nailbed_roi_image_url: string | null;
         };
         Insert: {
           id?: string;
@@ -95,6 +99,10 @@ export interface Database {
           symptoms?: Json | null;
           status?: string;
           created_at?: string;
+          eyelid_roi_image_path?: string | null;
+          eyelid_roi_image_url?: string | null;
+          nailbed_roi_image_path?: string | null;
+          nailbed_roi_image_url?: string | null;
         };
         Update: {
           id?: string;
@@ -106,6 +114,10 @@ export interface Database {
           symptoms?: Json | null;
           status?: string;
           created_at?: string;
+          eyelid_roi_image_path?: string | null;
+          eyelid_roi_image_url?: string | null;
+          nailbed_roi_image_path?: string | null;
+          nailbed_roi_image_url?: string | null;
         };
       };
       reports: {

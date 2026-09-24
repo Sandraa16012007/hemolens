@@ -1,21 +1,27 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Eye, Sparkles, CheckCircle2, ImageOff } from "lucide-react";
+import { X, Eye, Sparkles, CheckCircle2, ImageOff, ArrowDown } from "lucide-react";
 import Image from "next/image";
 
 interface ImagePreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   eyelidImageUrl?: string | null;
+  /** Phase 2: ROI-marked eyelid image */
+  eyelidRoiMarkedUrl?: string | null;
   nailbedImageUrl?: string | null;
+  /** Phase 2 passthrough: teammate ROI-marked nail image */
+  nailbedRoiMarkedUrl?: string | null;
 }
 
 export default function ImagePreviewModal({
   isOpen,
   onClose,
   eyelidImageUrl,
+  eyelidRoiMarkedUrl,
   nailbedImageUrl,
+  nailbedRoiMarkedUrl,
 }: ImagePreviewModalProps) {
   return (
     <AnimatePresence>
@@ -62,90 +68,85 @@ export default function ImagePreviewModal({
               </button>
             </div>
 
-            {/* Images Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4 overflow-y-auto">
-              {/* Eyelid Scan */}
-              <div className="space-y-2">
+            {/* Images Grid — Phase 2: 4-image vertical structure */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 py-4 overflow-y-auto">
+              {/* Eyelid Column: Original ↓ ROI-Marked */}
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-heading">1. Lower Eyelid Scan</span>
+                  <span className="font-bold text-heading">1. Lower Eyelid</span>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold text-[10px] border border-emerald-200 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
                     ROI Segmented
                   </span>
                 </div>
-
+                {/* Original Eyelid */}
                 <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-surface">
                   {eyelidImageUrl ? (
                     <>
-                      <Image
-                        src={eyelidImageUrl}
-                        alt="Captured Lower Eyelid Biomarker Scan"
-                        fill
-                        className="object-cover"
-                        priority
-                      />
-                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
-                        Palpebral Conjunctiva
-                      </div>
+                      <Image src={eyelidImageUrl} alt="Original Eyelid Image" fill className="object-cover" priority />
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">Original Eyelid Image</div>
                     </>
                   ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
-                      <ImageOff className="w-8 h-8 opacity-40" />
-                      <span className="text-xs">No image available</span>
-                    </div>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs">No image available</span></div>
                   )}
                 </div>
-
-                <p className="text-[11px] text-muted leading-relaxed">
-                  Optical reflectance evaluated mucosal erythema in vascular regions.
-                </p>
+                <div className="flex justify-center"><ArrowDown className="w-4 h-4 text-muted" /></div>
+                {/* ROI-Marked Eyelid */}
+                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-amber-200 bg-amber-50">
+                  {eyelidRoiMarkedUrl || eyelidImageUrl ? (
+                    <>
+                      {eyelidRoiMarkedUrl ? (
+                        <Image src={eyelidRoiMarkedUrl} alt="ROI-Marked Eyelid Image" fill className="object-cover" priority />
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs">ROI pending</span></div>
+                      )}
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-amber-600/90 backdrop-blur-xs text-[10px] text-white font-medium">ROI-Marked Eyelid Image</div>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs">No image available</span></div>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted leading-relaxed">Palpebral conjunctiva ROI (triangle + entropy) with translucent mask & outline; features from ROI pixels only.</p>
               </div>
 
-              {/* Nail-bed Scan */}
-              <div className="space-y-2">
+              {/* Nail Column: Original ↓ ROI-Marked (passthrough) */}
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-heading">2. Nail-bed Scan</span>
+                  <span className="font-bold text-heading">2. Nail-bed</span>
                   {nailbedImageUrl ? (
-                    <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent-dark font-semibold text-[10px] border border-accent-dark/30 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      Capillary Validated
-                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent-dark font-semibold text-[10px] border border-accent-dark/30 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Capillary Validated</span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-surface text-muted font-semibold text-[10px] border border-border">
-                      Not uploaded
-                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-surface text-muted font-semibold text-[10px] border border-border">Not uploaded</span>
                   )}
                 </div>
-
+                {/* Original Nail */}
                 <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-border bg-surface">
                   {nailbedImageUrl ? (
                     <>
-                      <Image
-                        src={nailbedImageUrl}
-                        alt="Captured Nail Bed Biomarker Scan"
-                        fill
-                        className="object-cover"
-                        priority
-                      />
-                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">
-                        Subungual Microvasculature
-                      </div>
+                      <Image src={nailbedImageUrl} alt="Original Nail-Bed Image" fill className="object-cover" priority />
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium">Original Nail-Bed Image</div>
                     </>
                   ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
-                      <ImageOff className="w-8 h-8 opacity-40" />
-                      <span className="text-xs text-center leading-snug px-4">
-                        Nail-bed image not uploaded
-                      </span>
-                    </div>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center leading-snug px-4">Nail-bed image not uploaded</span></div>
                   )}
                 </div>
-
-                <p className="text-[11px] text-muted leading-relaxed">
-                  {nailbedImageUrl
-                    ? "Capillary bed refill and micro-pallor evaluated as a secondary biomarker."
-                    : "Upload a nail-bed image during screening for supplementary analysis."}
-                </p>
+                <div className="flex justify-center"><ArrowDown className="w-4 h-4 text-muted" /></div>
+                {/* ROI-Marked Nail (passthrough teammate) */}
+                <div className="relative aspect-4/3 rounded-xl overflow-hidden border border-amber-200 bg-amber-50">
+                  {nailbedRoiMarkedUrl || nailbedImageUrl ? (
+                    <>
+                      {nailbedRoiMarkedUrl ? (
+                        <Image src={nailbedRoiMarkedUrl} alt="ROI-Marked Nail-Bed Image" fill className="object-cover" priority />
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center px-2">ROI pending (teammate)</span></div>
+                      )}
+                      <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-amber-600/90 backdrop-blur-xs text-[10px] text-white font-medium">ROI-Marked Nail-Bed Image</div>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center leading-snug px-4">Nail-bed image not uploaded</span></div>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted leading-relaxed">{nailbedImageUrl ? "Capillary bed refill and micro-pallor (teammate ROI) — secondary biomarker." : "Upload a nail-bed image during screening for supplementary analysis."}</p>
               </div>
             </div>
 

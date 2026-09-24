@@ -10,19 +10,26 @@ import {
   Maximize2,
   CheckCircle2,
   ImageOff,
+  ArrowDown,
 } from "lucide-react";
 import Image from "next/image";
 import ImagePreviewModal from "./ImagePreviewModal";
 
 interface TopMetricsGridProps {
   eyelidImageUrl?: string | null;
+  /** Phase 2: ROI-marked eyelid image (outline + translucent mask) */
+  eyelidRoiMarkedUrl?: string | null;
   nailbedImageUrl?: string | null;
+  /** Phase 2 passthrough: teammate-produced ROI-marked nail-bed image */
+  nailbedRoiMarkedUrl?: string | null;
   reportStatus?: string;
 }
 
 export default function TopMetricsGrid({
   eyelidImageUrl,
+  eyelidRoiMarkedUrl,
   nailbedImageUrl,
+  nailbedRoiMarkedUrl,
   reportStatus = "pending",
 }: TopMetricsGridProps) {
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -227,68 +234,137 @@ export default function TopMetricsGrid({
               )}
             </div>
 
-            {/* Photos Preview Grid */}
-            <div className="grid grid-cols-2 gap-2.5 mb-2">
-              {/* Eyelid Photo */}
-              <div
-                onClick={() => eyelidImageUrl && setIsPhotoModalOpen(true)}
-                className={`group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${eyelidImageUrl ? "cursor-pointer" : ""}`}
-              >
-                {eyelidImageUrl ? (
-                  <>
-                    <Image
-                      src={eyelidImageUrl}
-                      alt="Uploaded Eyelid Scan"
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
-                    <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
-                      Lower Eyelid
-                    </span>
-                    <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Maximize2 className="w-2.5 h-2.5" />
-                    </span>
-                  </>
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted">
-                    <ImageOff className="w-5 h-5 opacity-50" />
-                    <span className="text-[10px]">No image</span>
+            {/* Photos Preview Grid — Phase 2: 4-image vertical structure:
+                Original Eyelid ↓ ROI-Marked Eyelid | Original Nail ↓ ROI-Marked Nail
+                When ROI references are absent, falls back to 2-image grid. */}
+            {eyelidRoiMarkedUrl || nailbedRoiMarkedUrl ? (
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                {/* Eyelid Column */}
+                <div className="flex flex-col gap-1.5 items-center">
+                  <div
+                    onClick={() => eyelidImageUrl && setIsPhotoModalOpen(true)}
+                    className={`group relative w-full aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${eyelidImageUrl ? "cursor-pointer" : ""}`}
+                  >
+                    {eyelidImageUrl ? (
+                      <>
+                        <Image src={eyelidImageUrl} alt="Original Eyelid Image" fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90" />
+                        <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">Original Eyelid</span>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px]">No image</span></div>
+                    )}
                   </div>
-                )}
+                  <ArrowDown className="w-3.5 h-3.5 text-muted" />
+                  <div
+                    onClick={() => eyelidRoiMarkedUrl && setIsPhotoModalOpen(true)}
+                    className={`group relative w-full aspect-16/10 rounded-xl overflow-hidden border border-amber-200 bg-amber-50 shadow-xs ${eyelidRoiMarkedUrl ? "cursor-pointer" : ""}`}
+                  >
+                    {eyelidRoiMarkedUrl ? (
+                      <>
+                        <Image src={eyelidRoiMarkedUrl} alt="ROI-Marked Eyelid Image" fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide bg-black/60 px-1.5 py-0.5 rounded">ROI-Marked</span>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px]">ROI pending</span></div>
+                    )}
+                  </div>
+                </div>
+                {/* Nail Column */}
+                <div className="flex flex-col gap-1.5 items-center">
+                  <div
+                    onClick={() => nailbedImageUrl && setIsPhotoModalOpen(true)}
+                    className={`group relative w-full aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${nailbedImageUrl ? "cursor-pointer" : ""}`}
+                  >
+                    {nailbedImageUrl ? (
+                      <>
+                        <Image src={nailbedImageUrl} alt="Original Nail-Bed Image" fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90" />
+                        <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">Original Nail</span>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px] text-center px-1 leading-tight">Nail-bed image not uploaded</span></div>
+                    )}
+                  </div>
+                  <ArrowDown className="w-3.5 h-3.5 text-muted" />
+                  <div
+                    onClick={() => nailbedRoiMarkedUrl && setIsPhotoModalOpen(true)}
+                    className={`group relative w-full aspect-16/10 rounded-xl overflow-hidden border border-amber-200 bg-amber-50 shadow-xs ${nailbedRoiMarkedUrl ? "cursor-pointer" : ""}`}
+                  >
+                    {nailbedRoiMarkedUrl ? (
+                      <>
+                        <Image src={nailbedRoiMarkedUrl} alt="ROI-Marked Nail-Bed Image" fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide bg-black/60 px-1.5 py-0.5 rounded">ROI-Marked</span>
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px] text-center px-1 leading-tight">ROI pending (teammate)</span></div>
+                    )}
+                  </div>
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 mb-2">
+                {/* Eyelid Photo */}
+                <div
+                  onClick={() => eyelidImageUrl && setIsPhotoModalOpen(true)}
+                  className={`group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${eyelidImageUrl ? "cursor-pointer" : ""}`}
+                >
+                  {eyelidImageUrl ? (
+                    <>
+                      <Image
+                        src={eyelidImageUrl}
+                        alt="Uploaded Eyelid Scan"
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
+                      <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
+                        Lower Eyelid
+                      </span>
+                      <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Maximize2 className="w-2.5 h-2.5" />
+                      </span>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted">
+                      <ImageOff className="w-5 h-5 opacity-50" />
+                      <span className="text-[10px]">No image</span>
+                    </div>
+                  )}
+                </div>
 
-              {/* Nail-bed Photo */}
-              <div
-                onClick={() => nailbedImageUrl && setIsPhotoModalOpen(true)}
-                className={`group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${nailbedImageUrl ? "cursor-pointer" : ""}`}
-              >
-                {nailbedImageUrl ? (
-                  <>
-                    <Image
-                      src={nailbedImageUrl}
-                      alt="Uploaded Nail Bed Scan"
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
-                    <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
-                      Nail Bed
-                    </span>
-                    <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Maximize2 className="w-2.5 h-2.5" />
-                    </span>
-                  </>
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted">
-                    <ImageOff className="w-5 h-5 opacity-50" />
-                    <span className="text-[10px] text-center px-1 leading-tight">
-                      Nail-bed image not uploaded
-                    </span>
-                  </div>
-                )}
+                {/* Nail-bed Photo */}
+                <div
+                  onClick={() => nailbedImageUrl && setIsPhotoModalOpen(true)}
+                  className={`group relative aspect-16/10 rounded-xl overflow-hidden border border-border bg-surface shadow-xs ${nailbedImageUrl ? "cursor-pointer" : ""}`}
+                >
+                  {nailbedImageUrl ? (
+                    <>
+                      <Image
+                        src={nailbedImageUrl}
+                        alt="Uploaded Nail Bed Scan"
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
+                      <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide">
+                        Nail Bed
+                      </span>
+                      <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-md bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Maximize2 className="w-2.5 h-2.5" />
+                      </span>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted">
+                      <ImageOff className="w-5 h-5 opacity-50" />
+                      <span className="text-[10px] text-center px-1 leading-tight">
+                        Nail-bed image not uploaded
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="pt-2.5 border-t border-border/70 flex items-center justify-between text-xs text-muted">
@@ -304,12 +380,14 @@ export default function TopMetricsGrid({
         </motion.div>
       </div>
 
-      {/* Image Preview Lightbox Modal */}
+      {/* Image Preview Lightbox Modal — Phase 2: passes ROI-marked refs for 4-image structure */}
       <ImagePreviewModal
         isOpen={isPhotoModalOpen}
         onClose={() => setIsPhotoModalOpen(false)}
         eyelidImageUrl={eyelidImageUrl}
+        eyelidRoiMarkedUrl={eyelidRoiMarkedUrl}
         nailbedImageUrl={nailbedImageUrl}
+        nailbedRoiMarkedUrl={nailbedRoiMarkedUrl}
       />
     </div>
   );
