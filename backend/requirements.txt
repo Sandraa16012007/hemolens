@@ -14,3 +14,8 @@ numpy>=1.26.0
 # (1.0.x dropped mp.solutions; Tasks API requires model file download, handled in screen.py)
 mediapipe==0.10.35
 protobuf>=3.20.0
+
+# Machine Learning — continuous Hb regression inference
+scikit-learn>=1.6.0
+joblib>=1.3.0
+

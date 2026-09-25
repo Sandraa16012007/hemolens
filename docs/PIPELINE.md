@@ -42,44 +42,33 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 2. Nail ROI extraction.
 3. Extract RGB/HSV/LAB statistics + red/blue pixel ratios (feature engineering, not deep learning).
 
-### Stage 3 — ML Models
+### Stage 3 — ML Inference & Clinical Classification
 
-| Model | Input | Method | Output |
+| Model / Layer | Input | Method | Output |
 |---|---|---|---|
-| Eyelid model (primary) | 224×224 normalized ROI | EfficientNet-B0 (ImageNet-pretrained) → 1280-dim feature vector → dual head | `hb_estimate`, `anemia_probability` |
-| Nail model (secondary) | Color feature vector | Random Forest / XGBoost | `hb_estimate`, `confidence` |
+| Eyelid Hb Model (primary) | 49-dim color/texture vector (`eyelid_49_v1`) | `ExtraTreesRegressor` ensemble (`eyelid_hb_model_v1.joblib`) | `hb_estimate`, `hb_range`, `confidence` |
+| Deterministic Clinical Classification | ML `hb_estimate` + Demographics (age, gender, pregnancy) | WHO 2024 Cutoff Guidance (`who_2024_hb_v1`) | `risk_category`, `applicable_reference_population`, `thresholds_applied` |
 
-- **Classification head:** linear + sigmoid → P(anemia). Loss: Binary Cross-Entropy.
-- **Regression head:** linear → continuous Hb value. Loss: MSE.
-- **Confidence/uncertainty:** ensemble spread or tree-prediction dispersion — explicitly "model confidence," not clinical confidence.
+- **Inference Service:** Thread-safe singleton model bundle loaded once at FastAPI startup.
+- **Uncertainty Calibration:** Dynamic error margin computation producing calibrated `hb_range = [hb_estimate - margin, hb_estimate + margin]`.
+- **Classification Rules:** Strictly deterministic, versioned WHO 2024 rules (children 6–59m, 5–11y, 12–14y; non-pregnant women; pregnant women; men). LLM is strictly prohibited from altering clinical cutoffs.
 
-### Stage 4 — Result Fusion
-- If only eyelid ran → `overall_hb = eyelid_hb`.
-- If both ran → confidence-weighted fusion:
-  ```
-  overall_hb = (eyelid_hb * eyelid_conf + nail_hb * nail_conf) / (eyelid_conf + nail_conf)
-  ```
-- Apply uncertainty buffer (e.g. ±0.5 g/dL) → final Hb range.
-- Map to risk tier: **Normal / Mild / Moderate / Severe** (context-aware, not one universal threshold).
-- Compute overall model confidence score.
+### Stage 4 — Context Engine & Report Generation
+- Build structured **patient state JSON**: profile + symptoms + deterministic screening result (image evidence and subjective symptoms kept as separate, labeled fields).
+- **One LLM call** (Gemini 1.5 Flash / local LLM) converts structured JSON → human-readable clinical report + dietary/lifestyle guidance.
 
-### Stage 5 — Context Engine & Report Generation
-- Build a structured **patient state JSON**: profile + symptoms + latest screening result (image evidence and subjective symptoms kept as separate, labeled fields).
-- **One LLM call** (local Ollama — Qwen2.5 / Gemma2 / Llama3) converts structured JSON → human-readable clinical report + dietary/lifestyle guidance.
-
-### Stage 6 — Storage & AI Assistant
-- Save compact structured summary (not raw report) to Supabase.
+### Stage 5 — Storage & AI Assistant
+- Save compact structured summary to Supabase database (`public.screenings`, `public.reports`).
 - AI Assistant chatbot: **one LLM call per user question**, using the same structured patient-state context (multi-turn, memory-aware).
 
 ## 3. End-to-End Data Flow
 
 ```
-IMAGE(S) → OpenCV Validate → ROI Extract → Normalize
-        → ML Model(s) (EfficientNet-B0 / RF-XGBoost)
-        → {hb_estimate, anemia_probability, confidence}
-        → Confidence-weighted Fusion → Hb Range + Risk Tier
-        → + Profile + Symptoms → Structured Patient State
-        → 1 LLM call → Screening Report
+IMAGE(S) → OpenCV Validate → ROI Extract → 49-dim Feature Extract
+        → ML Inference (ExtraTreesRegressor) → {hb_estimate, hb_range, confidence}
+        → Deterministic WHO Classification → Risk Tier (Normal / Mild / Moderate / Severe)
+        → + Profile + Symptoms → Structured Screening Response
+        → 1 LLM call → Structured Screening Report
         → Supabase (save) → AI Assistant (LLM per message)
 ```
 
@@ -87,18 +76,40 @@ IMAGE(S) → OpenCV Validate → ROI Extract → Normalize
 
 | Path | LLM calls |
 |---|---|
-| Image validation + ML inference | 0 |
+| Image validation + ML inference + WHO Classification | 0 |
 | Report generation | 1 |
 | Chatbot | 1 per message |
 
-## 5. API Contract (MVP)
+## 5. API Contract (POST /api/screen/analyze)
 
 ```json
-POST /api/screen/analyze
 {
-  "eyelid": { "hb_estimate": 10.65, "hb_range": [10.1, 11.2], "anemia_probability": 0.78, "confidence": 0.73 },
-  "nail": null,
-  "overall": { "hb_range": [10.1, 11.2], "risk": "moderate", "confidence": 0.73 }
+  "screening_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "status": "complete",
+  "analysis_timestamp": "2026-09-26T00:50:00.000000+00:00",
+  "hb_estimate": 10.13,
+  "hb_range": [7.27, 12.99],
+  "model_confidence": 0.46,
+  "model_version": "eyelid_hb_model_v1",
+  "risk_category": "moderate",
+  "applicable_reference_population": "Non-pregnant women (≥15 years)",
+  "threshold_version": "who_2024_hb_v1",
+  "reference_source": "WHO 2024 Guideline on Haemoglobin Cutoffs for Anaemia",
+  "thresholds_applied": {
+    "normal_cutoff": 12.0,
+    "mild_floor": 11.0,
+    "moderate_floor": 8.0
+  },
+  "unclassifiable_reason": null,
+  "disclaimer": "This is a preliminary screening estimate, not a clinical diagnosis. Confirm results with a certified laboratory Hb test and consult a healthcare provider.",
+  "roi_info": {
+    "x": 320,
+    "y": 480,
+    "width": 420,
+    "height": 160,
+    "pixel_count": 28400
+  },
+  "roi_marked_image_base64": "data:image/jpeg;base64,..."
 }
 ```
 

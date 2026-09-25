@@ -117,8 +117,8 @@ graph TD
 | **FR-02** | Health Profile Onboarding | UI Built | Stores demographics, diet, symptoms, pregnancy, and medical conditions. |
 | **FR-03** | Guided Camera Capture | UI Built | Dual-capture support: lower eyelid (primary) and nail bed (optional). |
 | **FR-04** | Image Quality Validation | Implemented | Deterministic OpenCV & MediaPipe checks:<br>• **Eyelid (`POST /api/screen/validate-image-eyelid`):** resolution (≥400×300), normalized blur (Laplacian variance ≥25.0 on 1024px scale), brightness window (30–235), eye framing, and palpebral conjunctiva visibility/eversion.<br>• **Nail-bed (`POST /api/screen/validate-image-nail`):** resolution (≥400×300), skin-edge sharpness (Tenengrad ≥350.0), brightness window (30–235), and multi-cue fingernail detection requiring ≥ 3 clearly visible, non-zoomed-out fingernails.<br>Immediate validation on image upload/capture with interactive quality feedback. |
-| **FR-05** | Computer Vision Preprocessing | Phase 2 | OpenCV palpebral conjunctiva ROI extraction, LAB + CLAHE color normalization, resize to 224×224; nail-bed RGB/HSV/LAB feature extraction. |
-| **FR-06** | ML Risk & Hb Estimation | Phase 2 | EfficientNet-B0 dual-head model (eyelid, primary) outputs continuous Hb regression + anemia probability; RF/XGBoost (nail, secondary) outputs Hb estimate from color features. Confidence-weighted fusion → Hb range + risk classification (Normal, Mild, Moderate, Severe). |
+| **FR-05** | Computer Vision Preprocessing | Implemented | OpenCV palpebral conjunctiva ROI extraction, LAB + CLAHE color normalization, 49-dimensional color/texture feature extraction (`eyelid_49_v1`). |
+| **FR-06** | ML Risk & Hb Estimation | Implemented | Production `ExtraTreesRegressor` inference singleton (`eyelid_hb_model_v1.joblib`) outputs continuous Hb estimate + calibrated uncertainty interval + deterministic WHO 2024 clinical risk classification. |
 | **FR-07** | Screening Report Generation | UI Built | Full report layout with metrics, contributing factors, recommendations, and disclaimer; text generated via a single LLM call from structured ML output + profile + symptoms. |
 | **FR-08** | Context-Aware AI Chatbot | UI Built | Conversational assistant with memory of user health profile and past screenings; one LLM call per message. |
 | **FR-09** | Screening History & Trends | UI Built | Historical archive of all screenings with metric comparison and trajectory graphs. |
@@ -172,27 +172,25 @@ IMAGE(S) → OpenCV & MediaPipe Validate (blur/brightness/resolution/eyelid expo
 
 ## **7. Next Phase Roadmap (Phase 2 — Backend & ML Integration)**
 
-### **Step 1: FastAPI Backend Setup (In Progress / Partially Implemented)**
-- Created `backend/` directory with FastAPI application (`backend/main.py`, `backend/routers/screen.py`, `backend/config.py`).
+### **Step 1: FastAPI Backend Setup (Implemented & Calibrated)**
+- Created `backend/` directory with FastAPI application (`backend/main.py`, `backend/routers/screen.py`, `backend/routers/features.py`, `backend/routers/analyze.py`, `backend/config.py`).
 - Setup CORS, Pydantic schemas, and endpoints:
-  - `POST /api/screen/validate-image` *(Implemented & Calibrated)*: Pre-upload quality check validating resolution, standardized blur, exposure, and palpebral conjunctiva presence.
-  - `POST /api/screen/analyze`: OpenCV feature extraction + ML inference (eyelid + optional nail) + fusion.
-  - `POST /api/chat`: Ollama LLM endpoint with conversation context.
-  - `GET/POST /api/profile` & `/api/history`: Supabase database sync.
+  - `POST /api/screen/validate-image-eyelid` *(Implemented & Calibrated)*: Pre-upload quality check validating resolution, standardized blur, exposure, and palpebral conjunctiva presence.
+  - `POST /api/screen/validate-image-nail` *(Implemented & Calibrated)*: Pre-upload quality check for fingernail visibility and sharpness.
+  - `POST /api/screen/extract-eyelid-features` *(Implemented)*: Isolated 49-dim feature extraction and ROI markup.
+  - `POST /api/screen/analyze` *(Implemented & Verified)*: Full unified pipeline: quality validation → conjunctiva ROI detection → 49-dim feature extraction → ML Hb regression → deterministic WHO 2024 clinical risk classification.
+  - `POST /api/chat`: AI assistant endpoint with conversation context.
 
-### **Step 2: Computer Vision Pipeline**
-- Implement eyelid conjunctiva detection and ROI extraction using OpenCV (landmark-based or guided-crop for MVP).
-- Implement nail-bed ROI extraction and RGB/HSV/LAB color-ratio feature extraction.
+### **Step 2: Computer Vision Pipeline (Implemented)**
+- Implemented eyelid conjunctiva detection and ROI extraction using OpenCV + MediaPipe fallback.
+- Implemented 49-dimensional color/texture feature extraction (RGB/HSV/LAB statistics, ratios, excess red, luminance entropy).
+- Implemented nail-bed multi-cue segmentation and quality validation.
 
-### **Step 3: Machine Learning Model**
-- Fine-tune EfficientNet-B0 (dual-head: classification + regression) on CP-AnemiC + Eyes-Defy-Anemia for eyelid Hb/risk estimation.
-- Train Random Forest / XGBoost on nail color features if usable labeled data is available; otherwise ship API with `"nail": null`.
-- Output: Hb range estimation, anemia risk classification, and confidence score per model, plus fused overall result.
+### **Step 3: Machine Learning & Clinical Classification (Implemented)**
+- Production inference service (`backend/ml/predictor.py`) wrapping `eyelid_hb_model_v1.joblib` (`ExtraTreesRegressor`) loaded as a thread-safe singleton.
+- Strict Pydantic feature vector validation (`EyelidFeatureVectorInput`) enforcing exact 49-feature schema, ordering, and finite value bounds.
+- Deterministic WHO 2024 anaemia risk classification layer (`backend/clinical/risk_classifier.py`) resolving demographic population groups (children 6–59m, 5–11y, 12–14y; non-pregnant women; pregnant women; men).
 
-### **Step 4: AI Assistant LLM Service**
-- Connect FastAPI to Ollama running Qwen 2.5 / Gemma 2.
-- Inject system prompt with clinical guardrails, structured patient-state JSON (profile + symptoms + screening history), and recent screening results.
-
-### **Step 5: End-to-End Testing & Verification**
-- Connect Next.js frontend API calls to FastAPI endpoints.
-- Validate full flow from camera capture → quality validation → ROI/normalization → ML prediction → fusion → LLM report → storage → AI chat.
+### **Step 4: AI Assistant & Report Generation (Next Step)**
+- Connect Gemini / LLM layer to convert deterministic `ScreeningAnalysisResponse` + profile context into human-readable clinical reports.
+- Clinical guardrail: LLM explains and summarizes, never modifies numerical Hb thresholds.
