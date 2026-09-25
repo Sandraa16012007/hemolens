@@ -474,12 +474,12 @@ def _trim_medial_canthus(precise_mask: np.ndarray, img_bgr: np.ndarray,
 
     Removes inner-corner overreach above the lower-sclera line, on the nose
     side only: pixels both (a) medial to the sclera centroid toward the nose
-    side by >0.18*image_width and (b) above lower-sclera bottom
-    (y < sclera_bottom_y - 0.02h). Sclera mask reuses the existing HSV
+    side by >0.10*image_width and (b) above lower-sclera bottom
+    (y < sclera_bottom_y - 0.005h). Sclera mask reuses the existing HSV
     heuristic (S<42 & gray>158, open 5x5). Nose side = side (left/right of
     the centroid) with more mask pixels in the trim zone (tie -> right,
     matching observed right-side overreach). If sclera mask is empty,
-    fallback nips only the 15% corner triangle of the bbox top corner on
+    fallback nips only the 8% corner triangle of the bbox top corner on
     the denser side. Returns trimmed copy; original untouched.
     """
     try:
@@ -503,8 +503,8 @@ def _trim_medial_canthus(precise_mask: np.ndarray, img_bgr: np.ndarray,
                 scx = float(M["m10"] / M["m00"])
                 ys, _ = np.where(sclera_u8 > 0)
                 sclera_bottom = float(np.max(ys))
-                y_thresh = sclera_bottom - 0.02 * h
-                x_off = 0.18 * w
+                y_thresh = sclera_bottom - 0.05 * h
+                x_off = 0.25 * w
                 cols = np.arange(w, dtype=np.float64)[None, :]
                 rows = np.arange(h, dtype=np.float64)[:, None]
                 above = rows < y_thresh
@@ -520,9 +520,9 @@ def _trim_medial_canthus(precise_mask: np.ndarray, img_bgr: np.ndarray,
                 if cv2.countNonZero(trimmed) < 100:
                     return precise_mask.copy()  # safety: never wipe ROI
                 return trimmed
-        # Fallback: sclera empty — nip only the 15% top-corner triangle.
-        cw = max(2, int(round(bw * 0.15)))
-        ch = max(2, int(round(bh * 0.15)))
+        # Fallback: sclera empty — nip only the 8% top-corner triangle.
+        cw = max(2, int(round(bw * 0.08)))
+        ch = max(2, int(round(bh * 0.08)))
         top_end = min(h, y + max(1, int(round(bh * 0.40))))
         qb = max(1, int(round(bw * 0.25)))
         xl0, xl1 = max(0, x), min(w, x + qb)
