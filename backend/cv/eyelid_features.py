@@ -467,6 +467,87 @@ def _palpebral_best_contour(img_bgr: np.ndarray, h: int, w: int, total: int) -> 
     return None
 
 
+def _trim_medial_canthus(precise_mask: np.ndarray, img_bgr: np.ndarray,
+                         bbox: tuple[int, int, int, int]) -> np.ndarray:
+    """
+    Conservative medial-canthus/caruncle trim (deterministic, cv2/numpy only).
+
+    Removes inner-corner overreach above the lower-sclera line, on the nose
+    side only: pixels both (a) medial to the sclera centroid toward the nose
+    side by >0.18*image_width and (b) above lower-sclera bottom
+    (y < sclera_bottom_y - 0.02h). Sclera mask reuses the existing HSV
+    heuristic (S<42 & gray>158, open 5x5). Nose side = side (left/right of
+    the centroid) with more mask pixels in the trim zone (tie -> right,
+    matching observed right-side overreach). If sclera mask is empty,
+    fallback nips only the 15% corner triangle of the bbox top corner on
+    the denser side. Returns trimmed copy; original untouched.
+    """
+    try:
+        h, w = precise_mask.shape[:2]
+        x, y, bw, bh = (int(v) for v in bbox)
+        trimmed = precise_mask.copy()
+        if cv2.countNonZero(trimmed) == 0:
+            return trimmed
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        hsv_s = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)[:, :, 1]
+        sclera = (((hsv_s.astype(np.int16) < 42)
+                   & (gray.astype(np.int16) > 158)).astype(np.uint8) * 255)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        sclera_u8 = cv2.morphologyEx(sclera, cv2.MORPH_OPEN, k, iterations=1)
+        sel = trimmed > 0
+        if cv2.countNonZero(sclera_u8) > 0:
+            M = cv2.moments(sclera_u8)
+            if M["m00"] == 0:
+                pass  # fall through to corner fallback below
+            else:
+                scx = float(M["m10"] / M["m00"])
+                ys, _ = np.where(sclera_u8 > 0)
+                sclera_bottom = float(np.max(ys))
+                y_thresh = sclera_bottom - 0.02 * h
+                x_off = 0.18 * w
+                cols = np.arange(w, dtype=np.float64)[None, :]
+                rows = np.arange(h, dtype=np.float64)[:, None]
+                above = rows < y_thresh
+                left_zone = (cols < (scx - x_off)) & above
+                right_zone = (cols > (scx + x_off)) & above
+                lc = int(np.count_nonzero(sel & left_zone))
+                rc = int(np.count_nonzero(sel & right_zone))
+                if lc == 0 and rc == 0:
+                    return trimmed
+                nose_right = rc >= lc  # tie -> right (observed overreach side)
+                kill = (sel & (right_zone if nose_right else left_zone))
+                trimmed[kill] = 0
+                if cv2.countNonZero(trimmed) < 100:
+                    return precise_mask.copy()  # safety: never wipe ROI
+                return trimmed
+        # Fallback: sclera empty — nip only the 15% top-corner triangle.
+        cw = max(2, int(round(bw * 0.15)))
+        ch = max(2, int(round(bh * 0.15)))
+        top_end = min(h, y + max(1, int(round(bh * 0.40))))
+        qb = max(1, int(round(bw * 0.25)))
+        xl0, xl1 = max(0, x), min(w, x + qb)
+        xr0, xr1 = max(0, x + bw - qb), min(w, x + bw)
+        l_cnt = int(np.count_nonzero(sel[y:top_end, xl0:xl1])) if top_end > y and xl1 > xl0 else 0
+        r_cnt = int(np.count_nonzero(sel[y:top_end, xr0:xr1])) if top_end > y and xr1 > xr0 else 0
+        right = r_cnt >= l_cnt  # tie -> right
+        if right:
+            tri = np.array([[[x + bw - 1, y], [x + bw - 1 - cw, y],
+                             [x + bw - 1, y + ch]]], dtype=np.int32)
+        else:
+            tri = np.array([[[x, y], [x + cw, y],
+                             [x, y + ch]]], dtype=np.int32)
+        tri = np.clip(tri, [0, 0], [w - 1, h - 1])
+        corner = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(corner, [tri], 255)
+        trimmed[corner > 0] = 0
+        if cv2.countNonZero(trimmed) < 100:
+            return precise_mask.copy()
+        return trimmed
+    except Exception as e:
+        logger.debug(f"Medial-canthus trim skipped: {e}")
+        return precise_mask
+
+
 def _finish_macro_roi(img_bgr: np.ndarray, best_c: np.ndarray, h: int, w: int, total: int,
                       gray: np.ndarray, entropy: float, tri_thresh_val: float) -> dict[str, Any]:
     """
@@ -477,6 +558,12 @@ def _finish_macro_roi(img_bgr: np.ndarray, best_c: np.ndarray, h: int, w: int, t
     x, y, bw, bh = cv2.boundingRect(best_c)
     precise_mask = np.zeros((h, w), dtype=np.uint8)
     cv2.drawContours(precise_mask, [best_c], -1, 255, -1)
+    # Conservative medial-canthus/caruncle trim (excludes inner-corner overreach).
+    precise_mask = _trim_medial_canthus(precise_mask, img_bgr, (x, y, bw, bh))
+    _ys, _xs = np.where(precise_mask > 0)
+    if len(_xs) > 0:
+        x, y = int(np.min(_xs)), int(np.min(_ys))
+        bw, bh = int(np.max(_xs) - x + 1), int(np.max(_ys) - y + 1)
     pixel_count = int(cv2.countNonZero(precise_mask))
 
     frac = pixel_count / total
@@ -729,6 +816,12 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
                 # Create precise mask from contour
                 precise_mask = np.zeros((h, w), dtype=np.uint8)
                 cv2.drawContours(precise_mask, [c], -1, 255, -1)
+                # Conservative medial-canthus/caruncle trim (same as macro path).
+                precise_mask = _trim_medial_canthus(precise_mask, img_bgr, (x, y, bw, bh))
+                _ys, _xs = np.where(precise_mask > 0)
+                if len(_xs) > 0:
+                    x, y = int(np.min(_xs)), int(np.min(_ys))
+                    bw, bh = int(np.max(_xs) - x + 1), int(np.max(_ys) - y + 1)
                 pixel_count = int(cv2.countNonZero(precise_mask))
                 if pixel_count < 100:
                     pixel_count = int(cv2.countNonZero(mask[y:y+bh, x:x+bw]) if mask is not None else 0)
