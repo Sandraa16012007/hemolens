@@ -52,10 +52,12 @@ ROI detection method (explicit, deterministic):
    histogram entropy (-sum(p log2 p)) as research-required entropy/grayscale
    measure (logged, used for validation, not for thresholding).
 3. Color pre-filter for mucosal tissue:
-   mucosa_mask = (R > 80) & (R - G > 30) & (R - B > 40) in RGB space.
-   This is the same heuristic used in validation for palpebral tissue.
-   It is NOT a clinically validated erythema index; it is a simple
-   image-derived redness pre-filter justified by vascular pink/red appearance.
+    mucosa_mask = (R > 80) & (R - G > 30) & (R - B > 40) in RGB space.
+    This is the same heuristic used in validation for palpebral tissue.
+    It is NOT a clinically validated erythema index; it is a simple
+    image-derived redness pre-filter justified by vascular pink/red appearance.
+    (Macro palpebral-only stages tighten this further: R<235,
+    HSV S in (35,180), LAB a*>136 — see step 6.)
 4. If MediaPipe Face Landmarker is available and detects a face, build a
    polygonal eye region from lower-eyelid landmarks (RIGHT/LEFT lower indices)
    and restrict mucosa + triangle intersection to that polygon. This gives a
@@ -64,6 +66,12 @@ ROI detection method (explicit, deterministic):
    intersected with triangle mask, then morphological open/close (ellipse 7x7,
    iterations 2) to clean noise.
 6. Find external contours on cleaned mask, keep largest by area.
+   Macro close-ups then try a palpebral-only override first: lash-line cut
+   (drop rows below the dark lash run), 11x11 open split of the merged
+   contour, connected-component scoring (vertical band [0.25h,0.85h],
+   bottom-8% finger reject, sclera-centroid distance < 0.25w, aspect
+   preference > 2.0, r_minus_g / Laplacian texture gate), else a
+   sclera-anchored geometric band fallback for pale mucosa-sparse tissue.
    Compute bounding rect (x,y,w,h) and pixel_count (non-zero in mask or
    contour area). This is the conjunctival ROI.
 7. Validate ROI: pixel_count must be >= 0.8% of image and <= 35% of image,
@@ -227,16 +235,331 @@ _LEFT_LOWER = [374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466]
 _RIGHT_CORNERS = [33, 133]
 _LEFT_CORNERS = [263, 362]
 
+# ---------------------------------------------------------------------------
+# Palpebral-only mask (macro close-up): tightened mucosa + sclera-anchored
+# component selection. Rejects finger/skin merged by morphology CLOSE.
+# Deterministic, cv2/numpy only.
+# ---------------------------------------------------------------------------
+
+def _tightened_mucosa(img_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Tightened mucosal-tissue pre-filter (excludes skin/finger pink).
+
+    mucosa = (R>80) & (R-G>30) & (R-B>40)      # base redness (as validation)
+             & (R<235)                            # reject specular/finger highlight
+             & (S in (35,180))                    # HSV saturation: true mucosa band
+             & (a* > 136)                         # LAB a (OpenCV 0-255): red-green
+    Excludes white sclera (low S), brown iris (high S / low a*),
+    pale finger skin (low S and/or low a*).
+
+    Returns (mucosa_u8, gray, r, g, b, S, A, sclera_u8) with r/g/b int16,
+    S/A uint8, sclera_u8 = cleaned scleral-white mask (S<42 & gray>158, open 5x5).
+    """
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    r = img_rgb[:, :, 0].astype(np.int16)
+    g = img_rgb[:, :, 1].astype(np.int16)
+    b = img_rgb[:, :, 2].astype(np.int16)
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    S = hsv[:, :, 1]
+    A = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)[:, :, 1]
+    mucosa = ((r > 80) & ((r - g) > 30) & ((r - b) > 40)
+              & (r < 235) & (S > 35) & (S < 180) & (A > 136))
+    mucosa_u8 = (mucosa.astype(np.uint8) * 255)
+    sclera = (((S.astype(np.int16) < 42) & (gray.astype(np.int16) > 158)).astype(np.uint8) * 255)
+    sc_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    sclera_u8 = cv2.morphologyEx(sclera, cv2.MORPH_OPEN, sc_kernel, iterations=1)
+    return mucosa_u8, gray, r, g, b, S, A, sclera_u8
+
+
+def _central_sclera(sclera_u8: np.ndarray, h: int, w: int) -> Optional[tuple[float, float, int, int, int, int, np.ndarray]]:
+    """
+    Largest scleral-white component near image center (eye anchor).
+    Returns (scx, scy, x, y, bw, bh, comp_mask) or None if area < 800.
+    """
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(sclera_u8, 8)
+    best, best_area = -1, 0
+    for i in range(1, n):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        cx, cy = float(centroids[i][0]), float(centroids[i][1])
+        if area > best_area and abs(cx - w / 2) < w * 0.30 and h * 0.10 < cy < h * 0.80:
+            best, best_area = i, area
+    if best < 0 or best_area < 800:
+        return None
+    x = int(stats[best, cv2.CC_STAT_LEFT]); y = int(stats[best, cv2.CC_STAT_TOP])
+    bw = int(stats[best, cv2.CC_STAT_WIDTH]); bh = int(stats[best, cv2.CC_STAT_HEIGHT])
+    return (float(centroids[best][0]), float(centroids[best][1]), x, y, bw, bh, (labels == best))
+
+
+def _lower_lash_cut(gray: np.ndarray, h: int, w: int, sc_bottom: float) -> Optional[int]:
+    """
+    Lower lash line = first dark (gray<110) horizontal run below the sclera.
+    Dark-row fraction over central x band; run >= 3 rows with frac > 0.35,
+    searched in [max(sc_bottom+3, 0.30h), 0.90h]. Returns cut row or None.
+    ROI keeps pixels above the cut (finger zone below is removed).
+    """
+    dark = (gray < 110).astype(np.uint8)
+    cx0, cx1 = int(w * 0.20), int(w * 0.80)
+    rowfrac = dark[:, cx0:cx1].mean(axis=1)
+    lo = int(max(sc_bottom + 3, h * 0.30)); hi = int(h * 0.90)
+    if hi - lo < 6:
+        return None
+    run = 0
+    for y in range(lo, hi):
+        if rowfrac[y] > 0.35:
+            run += 1
+            if run >= 3:
+                return int(y - run + 1)
+        else:
+            run = 0
+    return None
+
+
+def _score_components(comp_labels: np.ndarray, n: int, stats: np.ndarray, centroids: np.ndarray,
+                      h: int, w: int, total: int, scx: float, scy: float,
+                      rmg: np.ndarray, lap: np.ndarray, min_rmg: float, min_aspect: float = 1.5) -> list:
+    """
+    Score connected components as palpebral-conjunctiva candidates.
+    Hard rejects: frac outside [0.003, 0.60], bw<20/bh<8, aspect<min_aspect,
+    centroid outside vertical band [0.30h, 0.88h], >30% pixels in bottom 8%
+    (finger zone), distance to sclera centroid > 0.25w, smooth+pale texture
+    (Laplacian variance < 30 and r_minus_g <= 25), r_minus_g < min_rmg.
+    Score prefers sclera-adjacent, horizontal (aspect>2.0), red (rmg>25).
+    Returns sorted [(score, neg_area, idx)] (deterministic).
+    """
+    yy = np.arange(h)[:, None]
+    scored: list = []
+    for i in range(1, n):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        frac = area / total
+        if frac < MIN_ROI_FRACTION or frac > 0.60:
+            continue
+        bw = int(stats[i, cv2.CC_STAT_WIDTH]); bh = int(stats[i, cv2.CC_STAT_HEIGHT])
+        if bw < MIN_ROI_DIM or bh < 8:
+            continue
+        asp = bw / max(1, bh)
+        if asp < min_aspect:
+            continue
+        cx, cy = float(centroids[i][0]), float(centroids[i][1])
+        if not (0.30 * h <= cy <= 0.88 * h):
+            continue
+        comp = (comp_labels == i)
+        bot8 = float((comp & (yy >= h * 0.92)).sum() / max(1, int(comp.sum())))
+        if bot8 > 0.30:
+            continue
+        dist = math.hypot(cx - scx, cy - scy)
+        if dist > 0.25 * w:
+            continue
+        rmgm = float(rmg[comp].mean())
+        if rmgm < min_rmg:
+            continue
+        lapv = float(lap[comp].var())
+        if lapv < 30.0 and rmgm <= 25.0:
+            continue
+        score = dist / w - (0.15 if asp > 2.0 else 0.0) - (0.10 if rmgm > 25.0 else 0.0)
+        scored.append((score, -area, i))
+    scored.sort()
+    return scored
+
+
+def _palpebral_best_contour(img_bgr: np.ndarray, h: int, w: int, total: int) -> Optional[np.ndarray]:
+    """
+    Palpebral-only component selection for macro close-ups.
+
+    Builds its own tightened mucosa mask (legacy mask untouched):
+      mucosa = base (R>80 & R-G>30 & R-B>40) & R<235
+               & S(HSV) in (35,180) & a*(LAB) > 136,
+    cleaned with ellipse 7x7 open/close(2) + adaptive triangle intersect.
+
+    Stage 1: lash-line cut (rows below cut zeroed) -> open 11x11 (splits
+      thin lash gap between conjunctiva and finger) -> connected
+      components -> keep component nearest sclera centroid
+      (dist < 0.25w) with aspect > 2.0 and r_minus_g mean > 25.
+    Stage 2 (pale conjunctiva, mucosa-sparse): sclera-anchored geometric
+      band [sc_bottom-0.02h, lash_cut] x [sclera +/- 0.15w],
+      tissue = R>80 & gray>=100 & not-sclera, close 15x7 -> components,
+      same scoring plus r_minus_g >= 18 gate and skin-texture rejection
+      (reject smooth+pale: Laplacian variance < 30 and r_minus_g <= 25).
+    Position prior: centroid in vertical band [0.30h, 0.88h]; contours
+    with >30% pixels in the bottom 8% (finger zone) are rejected.
+    Returns best contour or None (caller falls back to legacy selection).
+    """
+    mucosa_u8, gray, r, g, _b, _S, _A, sclera_u8 = _tightened_mucosa(img_bgr)
+
+    # Same cleaning as legacy macro path, on the tightened mask.
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    cleaned = cv2.morphologyEx(mucosa_u8, cv2.MORPH_OPEN, kernel, iterations=2)
+    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel, iterations=2)
+    gray_blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    _tv, tri_mask = cv2.threshold(gray_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_TRIANGLE)
+    tri_inv = cv2.bitwise_not(tri_mask)
+    tri_inv_frac = cv2.countNonZero(tri_inv) / total
+    if 0.05 < tri_inv_frac < 0.60:
+        combined = cv2.bitwise_and(cleaned, tri_inv)
+        if cv2.countNonZero(combined) > 500 and cv2.countNonZero(combined) > cv2.countNonZero(cleaned) * 0.15:
+            cleaned = combined
+
+    sc = _central_sclera(sclera_u8, h, w)
+    if sc is None:
+        return None
+    scx, scy, sc_x, _sc_y, sc_w, _sc_h, _scol = sc
+
+    # Sclera bottom edge: median per-column bottom in central band
+    cx0, cx1 = int(w * 0.20), int(w * 0.80)
+    sub = _scol[:, cx0:cx1]
+    bottoms: list[float] = []
+    for ci in np.where(sub.sum(axis=0) > 0)[0]:
+        rows = np.where(sub[:, ci])[0]
+        if len(rows):
+            bottoms.append(float(rows.max()))
+    sc_bottom = float(np.median(bottoms)) if bottoms else scy
+
+    cut_y = _lower_lash_cut(gray, h, w, sc_bottom)
+
+    rmg = (r - g).astype(np.float64)
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    k11 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+
+    def _largest_contour(mask: np.ndarray) -> Optional[np.ndarray]:
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            return None
+        return max(cnts, key=cv2.contourArea)
+
+    # ---- Stage 1: split merged mucosa contour ----
+    work = cleaned.copy()
+    if cut_y is not None and int(cv2.countNonZero(work[:cut_y])) > 4000:
+        work[cut_y:, :] = 0
+    splitm = cv2.morphologyEx(work, cv2.MORPH_OPEN, k11, iterations=1)
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(splitm, 8)
+    scored = _score_components(labels, n, stats, centroids, h, w, total, scx, scy, rmg, lap, min_rmg=25.0, min_aspect=2.0)
+    if scored:
+        winner = (labels == scored[0][2]).astype(np.uint8) * 255
+        cnt = _largest_contour(winner)
+        if cnt is not None and cv2.contourArea(cnt) >= 800:
+            return cnt
+
+    # ---- Stage 2: sclera-anchored geometric band (pale/mucosa-sparse) ----
+    if cut_y is None or not (0.35 * h <= cut_y <= 0.90 * h):
+        return None
+    top = int(max(h * 0.25, sc_bottom - 0.02 * h))
+    bot = int(cut_y)
+    if bot - top < 15:
+        return None
+    m = int(0.15 * w)
+    x0 = max(0, sc_x - m); x1 = min(w, sc_x + sc_w + m)
+    if x1 - x0 < MIN_ROI_DIM:
+        return None
+    tissue = ((r > 80) & (gray.astype(np.int16) >= 100) & (sclera_u8 == 0))
+    geom = np.zeros((h, w), dtype=np.uint8)
+    geom[top:bot, x0:x1] = (tissue[top:bot, x0:x1].astype(np.uint8) * 255)
+    kh = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 7))
+    geom = cv2.morphologyEx(geom, cv2.MORPH_CLOSE, kh, iterations=1)
+    sc5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    geom = cv2.morphologyEx(geom, cv2.MORPH_OPEN, sc5, iterations=1)
+    n2, labels2, stats2, centroids2 = cv2.connectedComponentsWithStats(geom, 8)
+    scored2 = _score_components(labels2, n2, stats2, centroids2, h, w, total, scx, scy, rmg, lap, min_rmg=18.0)
+    if scored2:
+        winner2 = (labels2 == scored2[0][2]).astype(np.uint8) * 255
+        cnt2 = _largest_contour(winner2)
+        if cnt2 is not None and cv2.contourArea(cnt2) >= 800:
+            return cnt2
+    return None
+
+
+def _finish_macro_roi(img_bgr: np.ndarray, best_c: np.ndarray, h: int, w: int, total: int,
+                      gray: np.ndarray, entropy: float, tri_thresh_val: float) -> dict[str, Any]:
+    """
+    Shared macro-path tail: precise mask from contour, fraction/entropy
+    validation, sclera size + adjacency check. Returns the standard
+    detect_conjunctiva_roi result dict. Unchanged legacy behavior.
+    """
+    x, y, bw, bh = cv2.boundingRect(best_c)
+    precise_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.drawContours(precise_mask, [best_c], -1, 255, -1)
+    pixel_count = int(cv2.countNonZero(precise_mask))
+
+    frac = pixel_count / total
+    if pixel_count < MIN_ROI_PIXELS and frac < MIN_ROI_FRACTION:
+        return {"success": False, "reason": f"Macro ROI too small after contour extraction ({pixel_count}px)", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
+    if frac > 0.95:
+        return {"success": False, "reason": f"Macro ROI too large ({pixel_count}px, {frac:.4f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
+    if entropy < MIN_ENTROPY:
+        return {"success": False, "reason": f"Low entropy {entropy:.2f}", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
+
+    # Sclera size + adjacency check for macro (eye white must be present; rejects no-conjunctiva)
+    try:
+        hsv_s = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)[:, :, 1]
+        sclera_mask = (hsv_s < 42) & (gray > 158)
+        sclera_u8 = (sclera_mask.astype(np.uint8) * 255)
+        sc_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        sclera_u8 = cv2.morphologyEx(sclera_u8, cv2.MORPH_OPEN, sc_kernel, iterations=1)
+        sclera_px = cv2.countNonZero(sclera_u8)
+        sclera_frac = sclera_px / total
+        # Require minimum sclera for valid eye (same as validation: 25000px or 0.08 frac)
+        # This rejects no-conj where sclera is tiny (12421, 0.04)
+        if sclera_px < 25000 and sclera_frac < 0.08:
+            # For tight macro where sclera is cropped out but conjunctiva fills frame,
+            # allow if ROI is large and redness high (good3 case)
+            # Check if ROI covers significant central area
+            roi_cy_norm = (y + bh / 2) / h
+            if not (frac > 0.06 and roi_cy_norm > 0.35 and roi_cy_norm < 0.75):
+                return {"success": False, "reason": f"Insufficient sclera for valid eye (sclera {sclera_px} frac {sclera_frac:.3f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
+        # Adjacency: ROI should be near sclera
+        sclera_contours, _ = cv2.findContours(sclera_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        sclera_centers = []
+        for sc in sclera_contours:
+            if cv2.contourArea(sc) < 800:
+                continue
+            M = cv2.moments(sc)
+            if M["m00"] == 0:
+                continue
+            scx = M["m10"] / M["m00"]
+            scy = M["m01"] / M["m00"]
+            sclera_centers.append((scx, scy))
+        if not sclera_centers:
+            # No sclera found but we already passed size check for tight crop case above
+            # If size check passed, allow (tight macro)
+            pass
+        else:
+            roi_cx, roi_cy = x + bw / 2, y + bh / 2
+            min_dist = min(math.hypot(roi_cx - scx, roi_cy - scy) for scx, scy in sclera_centers)
+            if min_dist > w * 0.42:
+                return {"success": False, "reason": f"ROI not adjacent to sclera (dist {min_dist:.0f} > {w * 0.42:.0f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
+    except Exception as e:
+        logger.debug(f"Sclera check failed: {e}")
+
+    return {
+        "success": True,
+        "mask": precise_mask,
+        "bbox": (int(x), int(y), int(bw), int(bh)),
+        "pixel_count": int(pixel_count),
+        "entropy": float(entropy),
+        "tri_thresh": float(tri_thresh_val),
+    }
+
 def _try_landmark_roi(img_bgr: np.ndarray) -> Optional[tuple[np.ndarray, tuple[int,int,int,int]]]:
     """
     Attempt landmark-based ROI polygon.
-    Returns (mask, bbox) if successful, else None.
+    Returns (mask, bbox) if successful, else None (caller falls back to macro path).
+
+    Dominant-eye selection: both RIGHT and LEFT lower-eyelid hulls are built
+    (dilated), scored by mucosa pixels inside, higher score wins. Deterministic
+    tie-break: larger corner width, then RIGHT.
+
+    Sanity rejection (before accepting) for pulled-down conjunctiva:
+    - reject if hull frac < 0.01 or pixel_count < 1% of image (too small)
+    - reject if hull centroid is in upper 55% of image (conjunctiva is lower half)
+    - reject if mucosa-within-hull < 500px
+    - reject if hull mean color looks like iris/sclera:
+      mean S < 50 and mean gray > 150 (white sclera), or mean V < 80 (dark pupil)
     """
     landmarker = _get_cached_landmarker()
     if landmarker is None:
         return None
     try:
         h, w = img_bgr.shape[:2]
+        total = h * w
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         import mediapipe as mp
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
@@ -244,36 +567,86 @@ def _try_landmark_roi(img_bgr: np.ndarray) -> Optional[tuple[np.ndarray, tuple[i
         if not result.face_landmarks:
             return None
         landmarks = result.face_landmarks[0]
-        # Determine dominant eye by width
+        # Mucosa pre-filter (same heuristic as ROI detection) for eye scoring
+        r_ch = img_rgb[:, :, 0].astype(np.int16)
+        g_ch = img_rgb[:, :, 1].astype(np.int16)
+        b_ch = img_rgb[:, :, 2].astype(np.int16)
+        mucosa_u8 = (((r_ch > 80) & ((r_ch - g_ch) > 30) & ((r_ch - b_ch) > 40)).astype(np.uint8) * 255)
+
         def lm_px(idx):
             return landmarks[idx].x * w, landmarks[idx].y * h
+
         r_outer = lm_px(_RIGHT_CORNERS[0]); r_inner = lm_px(_RIGHT_CORNERS[1])
         l_outer = lm_px(_LEFT_CORNERS[0]); l_inner = lm_px(_LEFT_CORNERS[1])
         rw = abs(r_inner[0]-r_outer[0]); lw = abs(l_inner[0]-l_outer[0])
-        if rw >= lw:
-            lower_idx = _RIGHT_LOWER
+
+        dil_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+
+        def build_hull(lower_idx):
+            pts = []
+            for idx in lower_idx:
+                x, y = lm_px(idx)
+                pts.append([int(round(x)), int(round(y))])
+            pts = np.array(pts, dtype=np.int32)
+            hull = cv2.convexHull(pts)
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(mask, [hull], 255)
+            mask = cv2.dilate(mask, dil_kernel, iterations=1)
+            return pts, mask
+
+        r_pts, r_mask = build_hull(_RIGHT_LOWER)
+        l_pts, l_mask = build_hull(_LEFT_LOWER)
+        r_score = int(cv2.countNonZero(cv2.bitwise_and(mucosa_u8, r_mask)))
+        l_score = int(cv2.countNonZero(cv2.bitwise_and(mucosa_u8, l_mask)))
+
+        # Pick higher mucosa score; deterministic tie-break: wider eye, then RIGHT
+        if l_score > r_score:
+            pts, mask = l_pts, l_mask
+        elif r_score > l_score:
+            pts, mask = r_pts, r_mask
         else:
-            lower_idx = _LEFT_LOWER
-        pts = []
-        for idx in lower_idx:
-            x,y = lm_px(idx)
-            pts.append([int(round(x)), int(round(y))])
-        pts = np.array(pts, dtype=np.int32)
-        # Compute bbox with small padding (5% of eye width)
-        x,y,bw,bh = cv2.boundingRect(pts)
-        pad = max(4, int(max(bw,bh)*0.15))
+            if rw >= lw:
+                pts, mask = r_pts, r_mask
+            else:
+                pts, mask = l_pts, l_mask
+
+        # --- Sanity rejection before accepting ---
+        pixel_count = int(cv2.countNonZero(mask))
+        frac = pixel_count / max(1, total)
+        if frac < 0.01 or pixel_count < int(0.01 * total):
+            return None
+        # Centroid must be in lower half (reject upper 55%)
+        M = cv2.moments(mask)
+        if M.get("m00", 0) == 0:
+            return None
+        cy = M["m01"] / M["m00"]
+        if cy < 0.55 * h:
+            return None
+        # Mucosa within hull must be substantial
+        mucosa_inside = int(cv2.countNonZero(cv2.bitwise_and(mucosa_u8, mask)))
+        if mucosa_inside < 500:
+            return None
+        # Hull mean color must not look like iris/sclera
+        hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        sel = mask > 0
+        try:
+            mean_s = float(np.mean(hsv[:, :, 1][sel].astype(np.float64)))
+            mean_v = float(np.mean(hsv[:, :, 2][sel].astype(np.float64)))
+            mean_gray = float(np.mean(gray[sel].astype(np.float64)))
+        except Exception:
+            return None
+        if mean_s < 50 and mean_gray > 150:
+            return None
+        if mean_v < 80:
+            return None
+
+        # Compute bbox with small padding (15% of eye size)
+        x, y, bw, bh = cv2.boundingRect(pts)
+        pad = max(4, int(max(bw, bh) * 0.15))
         x = max(0, x - pad); y = max(0, y - pad)
         bw = min(w - x, bw + 2*pad); bh = min(h - y, bh + 2*pad)
-        # Create polygon mask for lower eyelid area
-        mask = np.zeros((h,w), dtype=np.uint8)
-        # Fill polygon
-        # Ensure polygon is closed; use convex hull to avoid self-intersection
-        hull = cv2.convexHull(pts)
-        cv2.fillPoly(mask, [hull], 255)
-        # Dilate slightly to include conjunctiva interior
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
-        mask = cv2.dilate(mask, kernel, iterations=1)
-        return mask, (x,y,bw,bh)
+        return mask, (x, y, bw, bh)
     except Exception as e:
         logger.debug(f"Landmark ROI failed: {e}")
         return None
@@ -311,7 +684,8 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
     tri_thresh_val, tri_mask = cv2.threshold(gray_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_TRIANGLE)
     tri_inv = cv2.bitwise_not(tri_mask)
 
-    # Color mucosal mask in RGB
+    # Color mucosal mask in RGB (legacy base redness pre-filter; the
+    # palpebral-only stages below apply their own tightened variant).
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     r = img_rgb[:, :, 0].astype(np.int16)
     g = img_rgb[:, :, 1].astype(np.int16)
@@ -325,11 +699,11 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
         poly_mask, bbox_hint = landmark_result
         # Primary: mucosa within polygon
         combined = cv2.bitwise_and(mucosa_u8, poly_mask)
-        # If mucosa is too sparse (<500px) inside landmark polygon, fall back to polygon itself
-        # (landmark polygon is already a strong conjunctiva prior; color filter may be too strict under certain lighting)
+        # Reject bad hull: sparse mucosa (<500px) means iris/sclera or wrong
+        # eye — abandon landmark path so caller falls back to macro path
+        # (do NOT accept polygon itself as ROI).
         if cv2.countNonZero(combined) < 500:
-            # Use dilated polygon directly as ROI, but still validate color later via features (a* emphasis)
-            combined = poly_mask.copy()
+            landmark_result = None
         else:
             # Optionally refine with triangle inverse if it retains enough
             tri_inv_frac = cv2.countNonZero(tri_inv) / total
@@ -337,51 +711,54 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
                 combined_tri = cv2.bitwise_and(combined, tri_inv)
                 if cv2.countNonZero(combined_tri) > max(500, cv2.countNonZero(combined) * 0.15):
                     combined = combined_tri
-        # Clean
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        cleaned = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=1)
-        cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel, iterations=2)
-        mask = cleaned
-        # Find largest contour
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            # Fallback to polygon mask directly
-            mask = poly_mask
+            # Clean
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            cleaned = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=1)
+            cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel, iterations=2)
+            mask = cleaned
+            # Find largest contour (no polygon fallback — bad hull must not
+            # return success; fall back to macro path instead)
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if not contours:
-                return {"success": False, "reason": "No contour found in landmark-restricted ROI", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        # Largest by area
-        c = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(c)
-        x, y, bw, bh = cv2.boundingRect(c)
-        # Create precise mask from contour
-        precise_mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.drawContours(precise_mask, [c], -1, 255, -1)
-        pixel_count = int(cv2.countNonZero(precise_mask))
-        if pixel_count < 100:
-            pixel_count = int(cv2.countNonZero(mask[y:y+bh, x:x+bw]) if mask is not None else 0)
+                landmark_result = None
+            else:
+                # Largest by area
+                c = max(contours, key=cv2.contourArea)
+                area = cv2.contourArea(c)
+                x, y, bw, bh = cv2.boundingRect(c)
+                # Create precise mask from contour
+                precise_mask = np.zeros((h, w), dtype=np.uint8)
+                cv2.drawContours(precise_mask, [c], -1, 255, -1)
+                pixel_count = int(cv2.countNonZero(precise_mask))
+                if pixel_count < 100:
+                    pixel_count = int(cv2.countNonZero(mask[y:y+bh, x:x+bw]) if mask is not None else 0)
 
-        # Validation (relaxed)
-        frac = pixel_count / total
-        if pixel_count < MIN_ROI_PIXELS and frac < MIN_ROI_FRACTION:
-            return {"success": False, "reason": f"ROI too small ({pixel_count}px, {frac:.4f} < {MIN_ROI_FRACTION})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        if frac > MAX_ROI_FRACTION and pixel_count > total * MAX_ROI_FRACTION:
-            return {"success": False, "reason": f"ROI too large ({pixel_count}px, {frac:.4f} > {MAX_ROI_FRACTION})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        if bw < MIN_ROI_DIM or bh < MIN_ROI_DIM:
-            return {"success": False, "reason": f"ROI bbox too small ({bw}x{bh})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        if entropy < MIN_ENTROPY:
-            return {"success": False, "reason": f"Low entropy {entropy:.2f} < {MIN_ENTROPY}", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-
-        return {
-            "success": True,
-            "mask": precise_mask,
-            "bbox": (int(x), int(y), int(bw), int(bh)),
-            "pixel_count": int(pixel_count),
-            "entropy": float(entropy),
-            "tri_thresh": float(tri_thresh_val),
-        }
-    else:
-        # Macro close-up path (no face) — TWEAKED: reject whole-image contours, prefer central horizontal strip
+                # Validation (relaxed) — on failure abandon landmark path
+                # so macro path is tried, instead of returning bad-hull success
+                frac = pixel_count / total
+                reject_reason = None
+                if pixel_count < MIN_ROI_PIXELS and frac < MIN_ROI_FRACTION:
+                    reject_reason = f"ROI too small ({pixel_count}px, {frac:.4f} < {MIN_ROI_FRACTION})"
+                elif frac > MAX_ROI_FRACTION and pixel_count > total * MAX_ROI_FRACTION:
+                    reject_reason = f"ROI too large ({pixel_count}px, {frac:.4f} > {MAX_ROI_FRACTION})"
+                elif bw < MIN_ROI_DIM or bh < MIN_ROI_DIM:
+                    reject_reason = f"ROI bbox too small ({bw}x{bh})"
+                elif entropy < MIN_ENTROPY:
+                    reject_reason = f"Low entropy {entropy:.2f} < {MIN_ENTROPY}"
+                if reject_reason is not None:
+                    logger.debug(f"Landmark ROI rejected ({reject_reason}); falling back to macro path")
+                    landmark_result = None
+                else:
+                    return {
+                        "success": True,
+                        "mask": precise_mask,
+                        "bbox": (int(x), int(y), int(bw), int(bh)),
+                        "pixel_count": int(pixel_count),
+                        "entropy": float(entropy),
+                        "tri_thresh": float(tri_thresh_val),
+                    }
+    # Macro close-up path (no face OR landmark hull rejected) — TWEAKED: reject whole-image contours, prefer central horizontal strip
+    if landmark_result is None:
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         cleaned = cv2.morphologyEx(mucosa_u8, cv2.MORPH_OPEN, kernel, iterations=2)
         cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -393,6 +770,19 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
             combined = cv2.bitwise_and(cleaned, tri_inv)
             if cv2.countNonZero(combined) > 500 and cv2.countNonZero(combined) > cv2.countNonZero(cleaned) * 0.15:
                 cleaned = combined
+
+        # Palpebral-only attempt first: tightened mucosa + lash-line cut +
+        # 11x11 split + sclera-anchored component scoring isolates the
+        # conjunctiva strip when morphology CLOSE merges it with finger/skin.
+        # Validated by the shared tail; falls through to legacy contour
+        # selection below when no confident strip is found.
+        try:
+            palpebral_c = _palpebral_best_contour(img_bgr, h, w, total)
+        except Exception as e:
+            logger.debug(f"Palpebral selection failed, using legacy: {e}")
+            palpebral_c = None
+        if palpebral_c is not None and cv2.contourArea(palpebral_c) >= 800:
+            return _finish_macro_roi(img_bgr, palpebral_c, h, w, total, gray, entropy, tri_thresh_val)
 
         # Find contours, filter by area and position (prefer central)
         contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -536,80 +926,28 @@ def detect_conjunctiva_roi(img_bgr: np.ndarray) -> dict[str, Any]:
                 x, y, bw, bh = cv2.boundingRect(c)
                 candidates.append((area, 0.5, c))
 
-        # Pick largest area among candidates that is reasonably central (dist <0.8) else largest overall
-        candidates.sort(key=lambda t: t[0], reverse=True)
-        # Prefer central if area similar
-        best = candidates[0]
-        # If largest is at border and there is a slightly smaller central one, pick central
-        for area, dist, c in candidates:
-            if dist < 0.6 and area > best[0] * 0.4:
-                best = (area, dist, c)
-                break
+        # Score candidates as lower-central horizontal strip (palpebral conjunctiva):
+        # score = area * centrality * lower-half bonus * redness (not just largest).
+        # Lower-half bonus x2 for centroid y in [0.55h, 0.85h] prefers the true
+        # lower conjunctival strip over upper iris/eyebrow boxes in tall frames.
+        rmg_full = (r - g).astype(np.float64)
+        rescored: list = []
+        for area, dist_norm, c in candidates:
+            x, y, bw, bh = cv2.boundingRect(c)
+            cy = y + bh / 2
+            lower_bonus = 2.0 if (0.55 * h <= cy <= 0.85 * h) else 1.0
+            cmask = np.zeros((h, w), dtype=np.uint8)
+            cv2.drawContours(cmask, [c], -1, 255, -1)
+            sel = cmask > 0
+            rmg_mean = float(rmg_full[sel].mean()) if np.any(sel) else 0.0
+            red_factor = 1.0 + max(0.0, rmg_mean) / 50.0
+            centrality = max(0.05, 1.2 - dist_norm)
+            score = area * centrality * lower_bonus * red_factor
+            rescored.append((score, area, dist_norm, c))
+        rescored.sort(key=lambda t: t[0], reverse=True)
 
-        _, _, best_c = best
-        x, y, bw, bh = cv2.boundingRect(best_c)
-        precise_mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.drawContours(precise_mask, [best_c], -1, 255, -1)
-        pixel_count = int(cv2.countNonZero(precise_mask))
-
-        frac = pixel_count / total
-        if pixel_count < MIN_ROI_PIXELS and frac < MIN_ROI_FRACTION:
-            return {"success": False, "reason": f"Macro ROI too small after contour extraction ({pixel_count}px)", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        if frac > 0.95:
-            return {"success": False, "reason": f"Macro ROI too large ({pixel_count}px, {frac:.4f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        if entropy < MIN_ENTROPY:
-            return {"success": False, "reason": f"Low entropy {entropy:.2f}", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-
-        # Sclera size + adjacency check for macro (eye white must be present; rejects no-conjunctiva)
-        try:
-            hsv_s = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)[:,:,1]
-            sclera_mask = (hsv_s < 42) & (gray > 158)
-            sclera_u8 = (sclera_mask.astype(np.uint8) * 255)
-            sc_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-            sclera_u8 = cv2.morphologyEx(sclera_u8, cv2.MORPH_OPEN, sc_kernel, iterations=1)
-            sclera_px = cv2.countNonZero(sclera_u8)
-            sclera_frac = sclera_px / total
-            # Require minimum sclera for valid eye (same as validation: 25000px or 0.08 frac)
-            # This rejects no-conj where sclera is tiny (12421, 0.04)
-            if sclera_px < 25000 and sclera_frac < 0.08:
-                # For tight macro where sclera is cropped out but conjunctiva fills frame,
-                # allow if ROI is large and redness high (good3 case)
-                # Check if ROI covers significant central area
-                roi_cy_norm = (y + bh/2) / h
-                if not (frac > 0.06 and roi_cy_norm > 0.35 and roi_cy_norm < 0.75):
-                    return {"success": False, "reason": f"Insufficient sclera for valid eye (sclera {sclera_px} frac {sclera_frac:.3f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-            # Adjacency: ROI should be near sclera
-            sclera_contours, _ = cv2.findContours(sclera_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            sclera_centers = []
-            for sc in sclera_contours:
-                if cv2.contourArea(sc) < 800:
-                    continue
-                M = cv2.moments(sc)
-                if M["m00"] == 0:
-                    continue
-                scx = M["m10"] / M["m00"]
-                scy = M["m01"] / M["m00"]
-                sclera_centers.append((scx, scy))
-            if not sclera_centers:
-                # No sclera found but we already passed size check for tight crop case above
-                # If size check passed, allow (tight macro)
-                pass
-            else:
-                roi_cx, roi_cy = x + bw/2, y + bh/2
-                min_dist = min(math.hypot(roi_cx - scx, roi_cy - scy) for scx, scy in sclera_centers)
-                if min_dist > w * 0.42:
-                    return {"success": False, "reason": f"ROI not adjacent to sclera (dist {min_dist:.0f} > {w*0.42:.0f})", "entropy": entropy, "tri_thresh": float(tri_thresh_val)}
-        except Exception as e:
-            logger.debug(f"Sclera check failed: {e}")
-
-        return {
-            "success": True,
-            "mask": precise_mask,
-            "bbox": (int(x), int(y), int(bw), int(bh)),
-            "pixel_count": int(pixel_count),
-            "entropy": float(entropy),
-            "tri_thresh": float(tri_thresh_val),
-        }
+        _, _, _, best_c = rescored[0]
+        return _finish_macro_roi(img_bgr, best_c, h, w, total, gray, entropy, tri_thresh_val)
 
 # ---------------------------------------------------------------------------
 # Illumination / color normalization (CLAHE on L*)
