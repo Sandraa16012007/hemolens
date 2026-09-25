@@ -9,9 +9,14 @@ import EyelidCaptureCard, { SelectedImageData } from "./components/EyelidCapture
 import NailBedCaptureCard from "./components/NailBedCaptureCard";
 import ScreeningSymptomsCard from "./components/ScreeningSymptomsCard";
 import ScreeningBottomBar from "./components/ScreeningBottomBar";
-import { createScreeningWithImages } from "@/lib/supabase/screenings";
 import { validateEyelidImage, validateNailImage, ImageValidationState } from "@/lib/api/validation";
-import { extractEyelidFeatures } from "@/lib/api/eyelidFeatures";
+import {
+  runScreeningAnalysis,
+  AnalysisStage,
+  ScreeningAnalysisResponse,
+  STAGE_LABELS,
+} from "@/lib/api/screeningAnalysis";
+import { createScreeningWithImages } from "@/lib/supabase/screenings";
 import { useSidebar } from "../context/SidebarContext";
 
 export default function NewScreeningPage() {
@@ -38,8 +43,18 @@ export default function NewScreeningPage() {
     "pale_skin",
   ]);
   const [otherSymptoms, setOtherSymptoms] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+
+  // Analysis pipeline state machine
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>("idle");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [analysisResult, setAnalysisResult] = useState<ScreeningAnalysisResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Derived loading flag — true while the pipeline is in flight
+  const isLoading =
+    analysisStage !== "idle" &&
+    analysisStage !== "completed" &&
+    analysisStage !== "error";
 
   // Active validation request cancellation tokens
   const activeValidationRef = useRef<number>(0);
@@ -146,6 +161,9 @@ export default function NewScreeningPage() {
     if (!newImage) {
       activeValidationRef.current++;
       setEyelidValidation({ status: "idle" });
+      // Reset pipeline state when image is removed
+      setAnalysisStage("idle");
+      setAnalysisResult(null);
     } else {
       performImageValidation(newImage);
     }
@@ -181,7 +199,7 @@ export default function NewScreeningPage() {
   };
 
   const handleAnalyze = async () => {
-    // Strict quality gate: never upload unvalidated or rejected images to Supabase
+    // Quality gate: eyelid must be valid before submitting
     if (!eyelidImage || eyelidValidation.status !== "valid") {
       setErrorMessage("Please ensure your lower-eyelid image passes quality validation before proceeding.");
       return;
@@ -193,53 +211,172 @@ export default function NewScreeningPage() {
       return;
     }
 
-    if (isLoading || (eyelidValidation.status as string) === "validating" || (nailValidation.status as string) === "validating") return;
+    // Prevent double-submit
+    if (isLoading) return;
 
-    setIsLoading(true);
+    setAnalysisStage("uploading");
     setErrorMessage(null);
 
-    // Phase 2: Extract eyelid ROI (deterministic, never blocks screening on failure)
-    let eyelidRoiBase64: string | null = null;
+    // Resolve eyelid blob
+    let eyelidBlob: Blob;
     try {
-      const source = eyelidImage.file || eyelidImage.previewUrl;
-      if (source) {
-        const feat = await extractEyelidFeatures(source as File | Blob | string);
-        if (feat.success && (feat as { roi_marked_image_base64?: string }).roi_marked_image_base64) {
-          eyelidRoiBase64 = (feat as { roi_marked_image_base64: string }).roi_marked_image_base64;
-        } else {
-          console.warn("Eyelid ROI extraction did not yield ROI-marked image:", (feat as { reason?: string }).reason);
-        }
+      if (eyelidImage.file) {
+        eyelidBlob = eyelidImage.file;
+      } else if (eyelidImage.previewUrl) {
+        const resp = await fetch(eyelidImage.previewUrl);
+        if (!resp.ok) throw new Error("Could not load eyelid image data.");
+        eyelidBlob = await resp.blob();
+      } else {
+        throw new Error("No eyelid image data available.");
       }
-    } catch (roiErr) {
-      console.warn("Eyelid ROI extraction failed (non-fatal, proceeding without ROI):", roiErr);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to prepare image.";
+      setErrorMessage(msg);
+      setAnalysisStage("error");
+      return;
+    }
+
+    // Get authenticated user ID (best-effort, non-fatal)
+    let userId: string | null = null;
+    let profileData: {
+      age?: number | null;
+      gender?: string | null;
+      pregnancy_status?: string | null;
+      dietary_pattern?: string | null;
+      anemia_history?: string | null;
+      chronic_conditions?: string | null;
+    } = {};
+
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      userId = user?.id ?? null;
+
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select(
+            "age, gender, pregnancy_status, dietary_pattern, anemia_history, chronic_conditions"
+          )
+          .eq("id", userId)
+          .single();
+        if (profile) profileData = profile;
+      }
+    } catch {
+      // non-fatal — proceed without profile enrichment
+    }
+
+    let createdScreeningId: string | null = null;
+
+    // Step 1: If user is authenticated, upload images to Supabase storage & create screening row
+    if (userId) {
+      try {
+        const { data: screeningData, error: uploadError } = await createScreeningWithImages({
+          eyelidImage: {
+            file: eyelidBlob,
+            previewUrl: eyelidImage.previewUrl,
+            name: eyelidImage.name,
+          },
+          nailBedImage: nailBedImage
+            ? {
+                file: nailBedImage.file,
+                previewUrl: nailBedImage.previewUrl,
+                name: nailBedImage.name,
+              }
+            : null,
+          symptoms: {
+            selected: selectedSymptoms,
+            other: otherSymptoms.trim() || undefined,
+          },
+        });
+
+        if (uploadError) {
+          console.warn("Could not pre-upload images to Supabase storage:", uploadError.message);
+        } else if (screeningData?.id) {
+          createdScreeningId = screeningData.id;
+        }
+      } catch (uploadErr) {
+        console.warn("Non-fatal Supabase pre-upload issue:", uploadErr);
+      }
     }
 
     try {
-      const { data, error } = await createScreeningWithImages({
-        eyelidImage,
-        nailBedImage,
-        // Phase 2: pass ROI-marked image so report can render Original ↓ ROI-Marked
-        eyelidRoiBase64: eyelidRoiBase64 ?? undefined,
-        // nailbed ROI is teammate passthrough — currently null, will be populated when nail pipeline lands
+      const result = await runScreeningAnalysis({
+        eyelidFile: eyelidBlob,
+        screeningId: createdScreeningId,
+        userId,
+        userAge: profileData.age ?? null,
+        userGender: profileData.gender ?? null,
+        pregnancyStatus: profileData.pregnancy_status ?? null,
+        diet: profileData.dietary_pattern ?? null,
+        previousAnemiaHistory: profileData.anemia_history ?? null,
+        medicalConditions: profileData.chronic_conditions
+          ? [profileData.chronic_conditions]
+          : null,
         symptoms: {
           selected: selectedSymptoms,
           other: otherSymptoms.trim() || undefined,
         },
+        // Image already passed frontend validation — skip redundant backend re-check
+        skipValidation: true,
+        onProgress: (p) => setAnalysisStage(p.stage),
       });
 
-      if (error || !data) {
-        throw error || new Error("Failed to save screening record.");
+      // If backend returned base64 ROI markup, update the screening record in Supabase in background
+      if (createdScreeningId && result.roi_marked_image_base64) {
+        try {
+          const { createClient } = await import("@/lib/supabase/client");
+          const supabase = createClient();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase.from("screenings") as any)
+            .update({
+              eyelid_roi_image_url: result.roi_marked_image_base64,
+              status: "completed",
+            })
+            .eq("id", createdScreeningId);
+        } catch {
+          // non-fatal
+        }
       }
 
-      router.push(`/screening-report?screeningId=${data.id}`);
+      // Cache local image previews in sessionStorage for instant display on report page
+      if (typeof window !== "undefined") {
+        try {
+          if (eyelidImage.previewUrl) {
+            sessionStorage.setItem(`hemolens_eyelid_preview_${result.screening_id}`, eyelidImage.previewUrl);
+          }
+          if (nailBedImage?.previewUrl) {
+            sessionStorage.setItem(`hemolens_nailbed_preview_${result.screening_id}`, nailBedImage.previewUrl);
+          }
+          if (result.roi_marked_image_base64) {
+            sessionStorage.setItem(`hemolens_eyelid_roi_${result.screening_id}`, result.roi_marked_image_base64);
+          }
+          // Cache the full analysis result so the report page can use it without waiting for DB
+          sessionStorage.setItem(
+            `hemolens_analysis_result_${result.screening_id}`,
+            JSON.stringify(result)
+          );
+        } catch {
+          // ignore storage quota issues
+        }
+      }
+
+      setAnalysisResult(result);
+      setAnalysisStage("completed");
+
+      // Navigate to report with the persistent screening_id
+      router.push(`/screening-report?screeningId=${result.screening_id}`);
     } catch (err: unknown) {
-      console.error("Screening upload error:", err);
+      console.error("Screening analysis error:", err);
       const msg =
         err instanceof Error
           ? err.message
-          : "Failed to upload screening. Please check your connection and try again.";
+          : "Failed to complete screening analysis. Please check your connection and try again.";
       setErrorMessage(msg);
-      setIsLoading(false);
+      setAnalysisStage("error");
     }
   };
 
@@ -322,6 +459,14 @@ export default function NewScreeningPage() {
             onToggleSymptom={handleToggleSymptom}
             onOtherSymptomsChange={setOtherSymptoms}
           />
+
+          {/* Analysis pipeline stage indicator */}
+          {isLoading && (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-dark inline-block animate-pulse" />
+              <span className="animate-pulse">{STAGE_LABELS[analysisStage]}</span>
+            </div>
+          )}
 
           {/* Bottom Action Bar */}
           <ScreeningBottomBar

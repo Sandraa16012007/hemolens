@@ -53,12 +53,14 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 - **Uncertainty Calibration:** Dynamic error margin computation producing calibrated `hb_range = [hb_estimate - margin, hb_estimate + margin]`.
 - **Classification Rules:** Strictly deterministic, versioned WHO 2024 rules (children 6–59m, 5–11y, 12–14y; non-pregnant women; pregnant women; men). LLM is strictly prohibited from altering clinical cutoffs.
 
-### Stage 4 — Context Engine & Report Generation
-- Build structured **patient state JSON**: profile + symptoms + deterministic screening result (image evidence and subjective symptoms kept as separate, labeled fields).
-- **One LLM call** (Gemini 1.5 Flash / local LLM) converts structured JSON → human-readable clinical report + dietary/lifestyle guidance.
+### Stage 4 — Context Engine & Gemini Report Generation (Implemented & Integrated)
+- Build structured **patient state JSON**: profile + active symptoms + deterministic ML Hb prediction + WHO 2024 classification result.
+- **One LLM call** via Gemini 2.5/1.5 (`backend/ai/gemini/report_generator.py`) generates structured educational and dietary explanations without altering any numeric prediction.
+- Persistence service (`backend/services/persistence.py`) atomically stores screening records and the generated report into Supabase (`public.screenings`, `public.reports`).
 
-### Stage 5 — Storage & AI Assistant
-- Save compact structured summary to Supabase database (`public.screenings`, `public.reports`).
+### Stage 5 — Storage & Frontend Client Integration (Implemented & Integrated)
+- Frontend client (`lib/api/screeningAnalysis.ts`) coordinates multi-stage state transitions: `idle` → `uploading` → `validating` → `extracting` → `analyzing` → `generating_report` → `completed`.
+- Report parser (`lib/supabase/reportResult.ts`) loads stored JSONB payload directly into `TopMetricsGrid` and `ClinicalInsights` report views.
 - AI Assistant chatbot: **one LLM call per user question**, using the same structured patient-state context (multi-turn, memory-aware).
 
 ## 3. End-to-End Data Flow
@@ -67,9 +69,10 @@ Inputs collected: onboarding profile (age, sex, pregnancy, history), mandatory l
 IMAGE(S) → OpenCV Validate → ROI Extract → 49-dim Feature Extract
         → ML Inference (ExtraTreesRegressor) → {hb_estimate, hb_range, confidence}
         → Deterministic WHO Classification → Risk Tier (Normal / Mild / Moderate / Severe)
-        → + Profile + Symptoms → Structured Screening Response
-        → 1 LLM call → Structured Screening Report
-        → Supabase (save) → AI Assistant (LLM per message)
+        → + Profile + Symptoms → Structured Gemini Input
+        → 1 Gemini Call → Narrative Clinical Report
+        → Supabase Persistence (screenings + reports)
+        → Frontend (Screening Report View)
 ```
 
 ## 4. LLM Call Budget
@@ -102,6 +105,14 @@ IMAGE(S) → OpenCV Validate → ROI Extract → 49-dim Feature Extract
   },
   "unclassifiable_reason": null,
   "disclaimer": "This is a preliminary screening estimate, not a clinical diagnosis. Confirm results with a certified laboratory Hb test and consult a healthcare provider.",
+  "narrative_report": {
+    "summary": "Preliminary screening indicates moderate risk of low hemoglobin levels.",
+    "explanation": "Based on palpebral conjunctiva optical density analysis...",
+    "risk_factors": ["Reported fatigue", "Dietary restrictions"],
+    "recommendations": ["Consult a physician for a venous blood CBC test.", "Maintain iron-rich nutrition."],
+    "followup_urgency": "Prompt (within 1-2 weeks)",
+    "disclaimer": "This report is generated for educational and preliminary screening purposes."
+  },
   "roi_info": {
     "x": 320,
     "y": 480,

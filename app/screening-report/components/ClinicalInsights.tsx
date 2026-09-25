@@ -14,19 +14,60 @@ import {
   Check,
   AlertCircle,
   ArrowRight,
+  Sparkles,
 } from "lucide-react";
+import type { NarrativeReport } from "@/lib/supabase/reportResult";
 
-export default function ClinicalInsights() {
-  const factors = [
-    { label: "Fatigue", icon: Moon },
-    { label: "Dizziness", icon: RefreshCw },
-    { label: "Diet (Plant-forward)", icon: Apple },
-    { label: "Image analysis (Lower eyelid)", icon: Camera },
-    { label: "Health profile", icon: User },
-  ];
+interface ClinicalInsightsProps {
+  narrativeReport?: NarrativeReport | null;
+}
+
+const STATIC_FACTORS = [
+  { label: "Fatigue", icon: Moon },
+  { label: "Dizziness", icon: RefreshCw },
+  { label: "Diet (Plant-forward)", icon: Apple },
+  { label: "Image analysis (Lower eyelid)", icon: Camera },
+  { label: "Health profile", icon: User },
+];
+
+const DEFAULT_RECOMMENDATIONS = [
+  "Consider discussing this result with a healthcare professional or primary care physician.",
+  "A laboratory blood test (Complete Blood Count / CBC) is required to confirm whether you have anemia.",
+];
+
+const DEFAULT_DISCLAIMER =
+  "Do not use this preliminary screening result as a medical diagnosis or alter medications autonomously.";
+
+export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsProps) {
+  const recommendations =
+    narrativeReport?.recommendations?.length
+      ? narrativeReport.recommendations
+      : DEFAULT_RECOMMENDATIONS;
+
+  const disclaimer = narrativeReport?.disclaimer ?? DEFAULT_DISCLAIMER;
 
   return (
     <div className="space-y-4" id="clinical-insights-column">
+      {/* 0. AI-generated summary (shown only when available) */}
+      {narrativeReport?.summary && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.1 }}
+          className="rounded-2xl border border-accent/30 bg-accent/5 p-5 sm:p-6 shadow-xs"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-accent-dark" />
+            <span className="text-xs font-bold tracking-wider uppercase text-accent-dark">
+              AI Summary
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-heading leading-relaxed">
+            {narrativeReport.summary}
+          </p>
+        </motion.div>
+      )}
+
       {/* 1. What does this mean? */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -41,7 +82,8 @@ export default function ClinicalInsights() {
           </h2>
         </div>
         <p className="text-xs sm:text-sm text-muted leading-relaxed">
-          Your screening suggests a moderate risk of anemia based on your ocular conjunctival image and the health information you provided. When red blood cell microvascular density is lower, mucosal tissue inside the lower eyelid often displays a paler spectral reflection.
+          {narrativeReport?.explanation ??
+            "Your screening result will be interpreted once the analysis is complete."}
         </p>
       </motion.div>
 
@@ -60,24 +102,38 @@ export default function ClinicalInsights() {
             </h2>
           </div>
           <span className="text-[11px] font-semibold text-muted bg-surface border border-border px-2.5 py-0.5 rounded-md">
-            5 input signals verified
+            {narrativeReport?.risk_factors?.length
+              ? `${narrativeReport.risk_factors.length} input signals verified`
+              : "5 input signals verified"}
           </span>
         </div>
 
-        {/* Badges */}
+        {/* Badges — Dynamic AI factors or Static fallbacks */}
         <div className="flex flex-wrap gap-2">
-          {factors.map((factor) => {
-            const Icon = factor.icon;
-            return (
+          {narrativeReport?.risk_factors && narrativeReport.risk_factors.length > 0 ? (
+            narrativeReport.risk_factors.map((factor, idx) => (
               <div
-                key={factor.label}
+                key={idx}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border text-xs font-medium text-heading"
               >
-                <Icon className="w-3.5 h-3.5 text-accent-dark" />
-                <span>{factor.label}</span>
+                <Sparkles className="w-3.5 h-3.5 text-accent-dark" />
+                <span>{factor}</span>
               </div>
-            );
-          })}
+            ))
+          ) : (
+            STATIC_FACTORS.map((factor) => {
+              const Icon = factor.icon;
+              return (
+                <div
+                  key={factor.label}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border text-xs font-medium text-heading"
+                >
+                  <Icon className="w-3.5 h-3.5 text-accent-dark" />
+                  <span>{factor.label}</span>
+                </div>
+              );
+            })
+          )}
         </div>
       </motion.div>
 
@@ -95,36 +151,26 @@ export default function ClinicalInsights() {
           </h2>
         </div>
 
-        {/* Guidance Items */}
+        {/* Guidance Items — AI-driven recommendations with static fallback */}
         <div className="space-y-2.5">
-          {/* Item 1 */}
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-surface/70 border border-border">
-            <div className="w-4 h-4 rounded-full bg-accent-dark/15 text-accent-dark flex items-center justify-center shrink-0 mt-0.5">
-              <Check className="w-3 h-3 stroke-[2.5]" />
+          {recommendations.map((rec, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-3 p-3 rounded-xl bg-surface/70 border border-border"
+            >
+              <div className="w-4 h-4 rounded-full bg-accent-dark/15 text-accent-dark flex items-center justify-center shrink-0 mt-0.5">
+                <Check className="w-3 h-3 stroke-[2.5]" />
+              </div>
+              <p className="text-xs text-heading leading-relaxed">{rec}</p>
             </div>
-            <p className="text-xs text-heading leading-relaxed">
-              Consider discussing this result with a healthcare professional or primary care physician.
-            </p>
-          </div>
+          ))}
 
-          {/* Item 2 */}
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-surface/70 border border-border">
-            <div className="w-4 h-4 rounded-full bg-accent-dark/15 text-accent-dark flex items-center justify-center shrink-0 mt-0.5">
-              <Check className="w-3 h-3 stroke-[2.5]" />
-            </div>
-            <p className="text-xs text-heading leading-relaxed">
-              A laboratory blood test (Complete Blood Count / CBC) is required to confirm whether you have anemia.
-            </p>
-          </div>
-
-          {/* Item 3 (Alert) */}
+          {/* Always show the medical disclaimer alert */}
           <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50/60 border border-rose-200/80">
             <div className="w-4 h-4 rounded-full bg-rose-100 text-primary flex items-center justify-center shrink-0 mt-0.5">
               <AlertCircle className="w-3 h-3 stroke-[2.5]" />
             </div>
-            <p className="text-xs text-rose-950 leading-relaxed">
-              Do not use this preliminary screening result as a medical diagnosis or alter medications autonomously.
-            </p>
+            <p className="text-xs text-rose-950 leading-relaxed">{disclaimer}</p>
           </div>
         </div>
 

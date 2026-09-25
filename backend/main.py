@@ -23,9 +23,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
-    from backend.routers import screen, features, analyze
+    from backend.routers import screen, features, analyze, report
 except ModuleNotFoundError:
-    from routers import screen, features, analyze
+    from routers import screen, features, analyze, report
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -99,6 +99,7 @@ app.add_middleware(
 app.include_router(screen.router)
 app.include_router(features.router)
 app.include_router(analyze.router)
+app.include_router(report.router)
 
 
 # ---------------------------------------------------------------------------

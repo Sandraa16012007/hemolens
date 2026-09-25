@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import ImagePreviewModal from "./ImagePreviewModal";
+import type { MLPrediction, ClinicalClassification } from "@/lib/supabase/reportResult";
 
 interface TopMetricsGridProps {
   eyelidImageUrl?: string | null;
@@ -23,7 +24,38 @@ interface TopMetricsGridProps {
   /** Phase 2 passthrough: teammate-produced ROI-marked nail-bed image */
   nailbedRoiMarkedUrl?: string | null;
   reportStatus?: string;
+  /** Live ML prediction from backend (null = still pending) */
+  mlPrediction?: MLPrediction | null;
+  /** WHO 2024 deterministic classification (null = still pending) */
+  clinicalClassification?: ClinicalClassification | null;
 }
+
+// ─── Risk colour tokens ─────────────────────────────────────────────────────
+const RISK_STYLES: Record<
+  string,
+  { badge: string; highlight: string }
+> = {
+  normal: {
+    badge: "bg-emerald-50 border-emerald-200 text-emerald-800",
+    highlight: "bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs font-bold",
+  },
+  mild: {
+    badge: "bg-amber-50 border-amber-200 text-amber-800",
+    highlight: "bg-amber-50 text-amber-800 border border-amber-200 shadow-xs font-bold",
+  },
+  moderate: {
+    badge: "bg-rose-50 border-rose-200 text-primary",
+    highlight: "bg-white text-primary border border-rose-200 shadow-xs font-bold",
+  },
+  severe: {
+    badge: "bg-red-100 border-red-300 text-red-900",
+    highlight: "bg-red-100 text-red-900 border border-red-300 shadow-xs font-bold",
+  },
+  unclassifiable: {
+    badge: "bg-surface border-border text-muted",
+    highlight: "bg-surface text-muted border border-border shadow-xs font-bold",
+  },
+};
 
 export default function TopMetricsGrid({
   eyelidImageUrl,
@@ -31,16 +63,21 @@ export default function TopMetricsGrid({
   nailbedImageUrl,
   nailbedRoiMarkedUrl,
   reportStatus = "pending",
+  mlPrediction,
+  clinicalClassification,
 }: TopMetricsGridProps) {
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
   const isPending = reportStatus === "pending" || reportStatus === "processing";
+  const riskCategory = clinicalClassification?.risk_category ?? "unclassifiable";
+  const riskStyle = RISK_STYLES[riskCategory] ?? RISK_STYLES.unclassifiable;
+  const confidencePct = mlPrediction ? Math.round(mlPrediction.confidence * 100) : 0;
 
   return (
     <div className="space-y-4" id="top-metrics-grid">
       {/* 2-Card Row: Estimated Hb & Anemia Risk */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-        {/* Card 1: Estimated Hb Range */}
+        {/* Card 1: Estimated Hemoglobin Level */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -50,25 +87,32 @@ export default function TopMetricsGrid({
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-bold tracking-wider uppercase text-muted">
-                Estimated Hb Range
+                Estimated Hb Level
               </span>
               <div className="w-7 h-7 rounded-lg bg-accent/30 text-accent-dark flex items-center justify-center">
                 <Droplet className="w-3.5 h-3.5" />
               </div>
             </div>
 
-            {isPending ? (
+            {isPending || !mlPrediction || typeof mlPrediction.hb_estimate !== "number" || Number.isNaN(mlPrediction.hb_estimate) ? (
               <div className="flex items-baseline gap-1.5 mb-2">
                 <span className="text-2xl font-extrabold text-muted tracking-tight">
-                  Awaiting analysis
+                  {isPending ? "Awaiting analysis" : "—"}
                 </span>
               </div>
             ) : (
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className="text-3xl sm:text-4xl font-extrabold text-heading tracking-tight">
-                  10.2–11.0
-                </span>
-                <span className="text-sm font-semibold text-muted">g/dL</span>
+              <div className="mb-2">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-heading tracking-tight">
+                    {mlPrediction.hb_estimate.toFixed(1)}
+                  </span>
+                  <span className="text-sm font-semibold text-muted">g/dL</span>
+                </div>
+                {Array.isArray(mlPrediction.hb_range) && mlPrediction.hb_range.length >= 2 && (
+                  <div className="text-xs font-semibold text-accent-dark mt-0.5">
+                    Estimated Range: {(mlPrediction.hb_range[0] ?? 0).toFixed(1)}–{(mlPrediction.hb_range[1] ?? 0).toFixed(1)} g/dL
+                  </div>
+                )}
               </div>
             )}
 
@@ -79,17 +123,21 @@ export default function TopMetricsGrid({
             </p>
           </div>
 
-          {!isPending && (
+          {!isPending && mlPrediction && (
             <div className="pt-3 border-t border-border/70 space-y-1.5 text-xs">
               <div className="flex justify-between items-center text-muted">
                 <span>Patient reading</span>
                 <span className="font-semibold text-heading">
-                  10.6 g/dL <span className="font-normal text-muted">(midpoint)</span>
+                  {typeof mlPrediction.hb_estimate === "number" ? mlPrediction.hb_estimate.toFixed(1) : "—"} g/dL
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted">Typical adult baseline: 12.0–15.5 g/dL</span>
-                <span className="text-primary font-bold">-1.4 g/dL variance</span>
+                <span className="text-muted">
+                  Reference: {clinicalClassification?.applicable_population ?? "Adult"}
+                </span>
+                <span className="text-primary font-bold">
+                  {riskCategory.toUpperCase()}
+                </span>
               </div>
             </div>
           )}
@@ -113,13 +161,15 @@ export default function TopMetricsGrid({
             </div>
 
             <div className="mb-2">
-              {isPending ? (
+              {isPending || !clinicalClassification ? (
                 <span className="inline-block px-3.5 py-1 rounded-lg bg-surface border border-border text-muted font-bold text-sm tracking-wider">
-                  PENDING
+                  {isPending ? "PENDING" : "—"}
                 </span>
               ) : (
-                <span className="inline-block px-3.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-primary font-black text-sm sm:text-base tracking-wider">
-                  MODERATE
+                <span
+                  className={`inline-block px-3.5 py-1 rounded-lg font-black text-sm sm:text-base tracking-wider border ${riskStyle.badge}`}
+                >
+                  {riskCategory.toUpperCase()}
                 </span>
               )}
             </div>
@@ -127,21 +177,28 @@ export default function TopMetricsGrid({
             <p className="text-xs text-muted leading-relaxed mb-4">
               {isPending
                 ? "Risk classification will be available after AI analysis completes."
-                : "This result suggests a moderate probability of low hemoglobin levels."}
+                : clinicalClassification
+                ? `WHO 2024 — ${clinicalClassification.applicable_population}.`
+                : "This result suggests a risk of low hemoglobin levels."}
             </p>
           </div>
 
           <div className="pt-3 border-t border-border/70">
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-surface border border-border text-center text-xs font-semibold">
-              <div className="py-1.5 rounded-lg text-muted">Low</div>
-              {isPending ? (
-                <div className="py-1.5 rounded-lg text-muted">—</div>
-              ) : (
-                <div className="py-1.5 rounded-lg bg-white text-primary border border-rose-200 shadow-xs font-bold">
-                  Moderate
-                </div>
-              )}
-              <div className="py-1.5 rounded-lg text-muted">High</div>
+            {/* Risk level indicator bar */}
+            <div className="grid grid-cols-4 gap-1.5 p-1 rounded-xl bg-surface border border-border text-center text-xs font-semibold">
+              {(["normal", "mild", "moderate", "severe"] as const).map((level) => {
+                const isActive = !isPending && clinicalClassification?.risk_category === level;
+                return (
+                  <div
+                    key={level}
+                    className={`py-1.5 rounded-lg capitalize ${
+                      isActive ? riskStyle.highlight : "text-muted"
+                    }`}
+                  >
+                    {level}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </motion.div>
@@ -167,14 +224,14 @@ export default function TopMetricsGrid({
                 </span>
               </div>
               <span className="text-base sm:text-lg font-extrabold text-accent-dark">
-                {isPending ? "—" : "82%"}
+                {isPending || !mlPrediction ? "—" : `${confidencePct}%`}
               </span>
             </div>
 
             <div className="h-2 w-full rounded-full bg-surface border border-border overflow-hidden p-0.5">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: isPending ? "0%" : "82%" }}
+                animate={{ width: isPending || !mlPrediction ? "0%" : `${confidencePct}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
                 className="h-full rounded-full bg-accent-dark"
               />
@@ -189,7 +246,8 @@ export default function TopMetricsGrid({
 
           <div className="pt-3 border-t border-border/70 flex items-center justify-between text-xs text-muted mt-3">
             <span>
-              Model Version: <strong>v2.4-ensemble</strong>
+              Model Version:{" "}
+              <strong>{mlPrediction?.model_version ?? "—"}</strong>
             </span>
             {isPending ? (
               <span className="flex items-center gap-1 text-amber-600 font-medium">

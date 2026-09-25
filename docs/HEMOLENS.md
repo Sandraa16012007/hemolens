@@ -191,6 +191,14 @@ IMAGE(S) → OpenCV & MediaPipe Validate (blur/brightness/resolution/eyelid expo
 - Strict Pydantic feature vector validation (`EyelidFeatureVectorInput`) enforcing exact 49-feature schema, ordering, and finite value bounds.
 - Deterministic WHO 2024 anaemia risk classification layer (`backend/clinical/risk_classifier.py`) resolving demographic population groups (children 6–59m, 5–11y, 12–14y; non-pregnant women; pregnant women; men).
 
-### **Step 4: AI Assistant & Report Generation (Next Step)**
-- Connect Gemini / LLM layer to convert deterministic `ScreeningAnalysisResponse` + profile context into human-readable clinical reports.
-- Clinical guardrail: LLM explains and summarizes, never modifies numerical Hb thresholds.
+### **Step 4: Gemini Report Generator & AI Assistant (Implemented & Integrated)**
+- Created dedicated Gemini integration service (`backend/ai/gemini/client.py`, `backend/ai/gemini/prompts.py`, `backend/ai/gemini/schemas.py`, `backend/ai/gemini/report_generator.py`).
+- Clinical guardrail: LLM explains and summarizes using strictly structured ML predictions and WHO 2024 classifications — never calculates or modifies numerical Hb thresholds.
+- Structured output: generates `summary`, `explanation`, `risk_factors`, `recommendations`, and `followup_urgency`.
+- Integrated Supabase persistence layer (`backend/services/persistence.py`) saving atomic records across `screenings` and `reports` tables with typed `result` payload.
+
+### **Step 5: Frontend End-to-End Integration (Implemented & Verified)**
+- Created canonical client interface (`lib/api/screeningAnalysis.ts`) connecting `new-screening` page to `POST /api/screen/analyze`.
+- Implemented robust frontend state machine: `idle` → `uploading` → `validating` → `extracting` → `analyzing` → `generating_report` → `completed`.
+- Created typed parser (`lib/supabase/reportResult.ts`) to extract `ml_prediction`, `clinical_classification`, and `narrative_report`.
+- Updated `TopMetricsGrid` and `ClinicalInsights` to dynamically render real ML Hb predictions, WHO 2024 population references, confidence gauges, and AI clinical summaries with defensive error handling.

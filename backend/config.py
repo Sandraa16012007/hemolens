@@ -1,9 +1,22 @@
-"""
-HemoLens Backend — Validation Thresholds & Constants
-=====================================================
-All tunable parameters for image quality validation live here.
-Adjust these values to calibrate sensitivity without modifying endpoint logic.
-"""
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env.local and .env from project root and backend folder
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(_ROOT_DIR / ".env.local")
+load_dotenv(_ROOT_DIR / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# ===========================================================================
+# SUPABASE & AI CONFIGURATION
+# ===========================================================================
+SUPABASE_URL: str = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ===========================================================================
 # SHARED IMAGE QUALITY THRESHOLDS
