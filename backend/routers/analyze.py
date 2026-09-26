@@ -43,6 +43,7 @@ try:
         UserProfileContext,
         classify_anaemia_risk,
     )
+    from backend.ai.chat.memory import append_report
     from backend.cv.eyelid_features import extract_eyelid_features
     from backend.ml.predictor import predict_hb
     from backend.routers.screen import (
@@ -55,7 +56,10 @@ try:
         _decode_image,
         _ERRORS,
     )
-    from backend.services.persistence import persist_screening_and_report
+    from backend.services.persistence import (
+        is_valid_uuid,
+        persist_screening_and_report,
+    )
 except ModuleNotFoundError:
     from ai.gemini import (
         MLScreeningContext,
@@ -73,6 +77,7 @@ except ModuleNotFoundError:
         UserProfileContext,
         classify_anaemia_risk,
     )
+    from ai.chat.memory import append_report
     from cv.eyelid_features import extract_eyelid_features
     from ml.predictor import predict_hb
     from routers.screen import (
@@ -85,7 +90,7 @@ except ModuleNotFoundError:
         _decode_image,
         _ERRORS,
     )
-    from services.persistence import persist_screening_and_report
+    from services.persistence import is_valid_uuid, persist_screening_and_report
 
 logger = logging.getLogger(__name__)
 
@@ -451,6 +456,23 @@ async def analyze_eyelid_screening(
             symptoms=symptoms_ctx,
             roi_info=roi_dict,
         )
+
+    # Best-effort chat-memory hook: mirror a compact report summary so the
+    # assistant sees this screening immediately. Never breaks analysis.
+    if generated_report_data is not None and is_valid_uuid(user_id):
+        try:
+            raw_factors = getattr(generated_report_data, "factors_considered", None) or []
+            key_factors = [str(f) for f in list(raw_factors)[:5] if str(f).strip()]
+            compact = {
+                "screening_id": active_screening_id,
+                "date": now_iso,
+                "hb_range": prediction.hb_range,
+                "risk_category": classification.risk_category.value,
+                "key_factors": key_factors,
+            }
+            append_report(str(user_id), compact)
+        except Exception as exc:
+            logger.warning("Chat-memory report hook failed for %s: %s", active_screening_id, exc)
 
     # ------------------------------------------------------------------ #
     # Step 8 — Build & Return Final Response                             #
