@@ -280,6 +280,77 @@ export async function createScreeningWithImages({
 }
 
 /**
+ * Upload a post-analysis ROI-marked image (base64 data URL) to the
+ * 'screening-images' bucket and update the screening row with the real
+ * storage path + public URL (plus status flip to completed).
+ *
+ * This is the post-analysis counterpart to the pre-upload ROI support in
+ * createScreeningWithImages: ROI markup only exists AFTER backend analysis,
+ * so it must be stored via update, never by stuffing base64 into URL columns.
+ *
+ * Non-fatal by design: returns null (with a console warning) on any failure
+ * so callers can fall back to sessionStorage caching. Never throws.
+ */
+export type RoiKind = "eyelid" | "nailbed";
+
+export async function uploadRoiImageAndUpdateScreening({
+  screeningId,
+  kind,
+  base64,
+}: {
+  screeningId: string;
+  kind: RoiKind;
+  base64: string;
+}): Promise<{ publicUrl: string; path: string } | null> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      console.warn("ROI upload skipped: no authenticated user.");
+      return null;
+    }
+
+    const { blob, ext, contentType } = base64DataUrlToBlob(base64);
+    const fileName = kind === "eyelid" ? "eyelid_roi" : "nailbed_roi";
+    const roiPath = `${user.id}/${screeningId}/${fileName}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("screening-images")
+      .upload(roiPath, blob, { contentType, upsert: true });
+    if (uploadError) {
+      console.warn(`Failed to upload ${fileName} image (non-fatal): ${uploadError.message}`);
+      return null;
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("screening-images").getPublicUrl(roiPath);
+
+    const urlColumn = kind === "eyelid" ? "eyelid_roi_image_url" : "nailbed_roi_image_url";
+    const pathColumn = kind === "eyelid" ? "eyelid_roi_image_path" : "nailbed_roi_image_path";
+
+    const { error: updateError } = await (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase.from("screenings") as any
+    )
+      .update({ [urlColumn]: publicUrl, [pathColumn]: roiPath, status: "completed" })
+      .eq("id", screeningId)
+      .eq("user_id", user.id);
+    if (updateError) {
+      console.warn(`Failed to save ${fileName} URL to screening row (non-fatal): ${updateError.message}`);
+      // Storage file exists and is publicly readable; still return refs.
+    }
+
+    return { publicUrl, path: roiPath };
+  } catch (err) {
+    console.warn("Non-fatal ROI upload issue:", err);
+    return null;
+  }
+}
+
+/**
  * Fetch an individual screening record by its ID.
  */
 export async function getScreeningById(

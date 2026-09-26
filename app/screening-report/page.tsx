@@ -258,11 +258,13 @@ function ScreeningReportContent() {
                 let cachedEyelid: string | null = null;
                 let cachedNail: string | null = null;
                 let cachedEyelidRoi: string | null = null;
+                let cachedNailRoi: string | null = null;
                 if (typeof window !== "undefined" && screeningId) {
                   try {
                     cachedEyelid = sessionStorage.getItem(`hemolens_eyelid_preview_${screeningId}`);
                     cachedNail = sessionStorage.getItem(`hemolens_nailbed_preview_${screeningId}`);
                     cachedEyelidRoi = sessionStorage.getItem(`hemolens_eyelid_roi_${screeningId}`);
+                    cachedNailRoi = sessionStorage.getItem(`hemolens_nail_roi_${screeningId}`);
                   } catch {
                     // ignore
                   }
@@ -271,7 +273,7 @@ function ScreeningReportContent() {
                 const effectiveEyelidUrl = screening?.eyelid_image_url || cachedEyelid || null;
                 const effectiveEyelidRoiUrl = screening?.eyelid_roi_image_url || cachedEyelidRoi || null;
                 const effectiveNailUrl = screening?.nailbed_image_url || cachedNail || null;
-                const effectiveNailRoiUrl = screening?.nailbed_roi_image_url || null;
+                const effectiveNailRoiUrl = screening?.nailbed_roi_image_url || cachedNailRoi || null;
 
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">

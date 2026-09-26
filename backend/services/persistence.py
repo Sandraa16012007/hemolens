@@ -190,17 +190,19 @@ def persist_screening_and_report(
     }
 
     try:
-        # Step 1: Idempotent screening record update / insert if user_id is a valid UUID
+        # Step 1: Idempotent screening record status update (user-owned rows only).
+        # Image URL/path columns are OWNED by the frontend upload flow
+        # (createScreeningWithImages + ROI storage uploads) and MUST NOT be
+        # written here: this service never sees the real storage URLs, so
+        # including those keys would overwrite good values with ""/guesses.
         if user_id and is_valid_uuid(user_id):
             screening_payload = {
                 "id": safe_screening_id,
                 "user_id": user_id,
                 "status": "completed" if report_status in ("complete", "fallback") else "failed",
-                "eyelid_image_path": eyelid_image_path or f"{user_id}/{safe_screening_id}/eyelid.jpg",
-                "eyelid_image_url": eyelid_image_url or "",
                 "symptoms": symptoms.model_dump() if symptoms else {},
             }
-            # Upsert into screenings
+            # Upsert into screenings (status/symptoms only; image columns untouched)
             client.from_("screenings").upsert(screening_payload, on_conflict="id").execute()
 
         # Step 2: Idempotent report record upsert (keyed on unique screening_id)

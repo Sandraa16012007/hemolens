@@ -19,3 +19,6 @@ protobuf>=3.20.0
 scikit-learn>=1.6.0
 joblib>=1.3.0
 
+# Supabase — screening/report persistence (service-role client)
+supabase>=2.9.0
+
