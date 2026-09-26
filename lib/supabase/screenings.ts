@@ -383,11 +383,11 @@ function buildHistoryItem(
   const parsed = parseReportResult(report);
 
   let hbRange = "—";
-  if (parsed.ml_prediction?.hb_range) {
+  if (parsed.ml_prediction?.hb_estimate != null) {
+    hbRange = `${parsed.ml_prediction.hb_estimate.toFixed(1)}`;
+  } else if (parsed.ml_prediction?.hb_range) {
     const [low, high] = parsed.ml_prediction.hb_range;
     hbRange = `${low.toFixed(1)}–${high.toFixed(1)}`;
-  } else if (parsed.ml_prediction?.hb_estimate != null) {
-    hbRange = `${parsed.ml_prediction.hb_estimate.toFixed(1)}`;
   }
 
   const rawRiskCategory = parsed.clinical_classification?.risk_category ?? null;

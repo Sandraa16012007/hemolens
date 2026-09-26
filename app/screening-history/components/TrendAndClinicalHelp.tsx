@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, TrendingDown, Minus, Phone, Check, Building2, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Phone, Check, Loader2 } from "lucide-react";
 import { getUserScreeningHistory, type ScreeningHistoryItem } from "@/lib/supabase/screenings";
 
 // Chart constants
@@ -59,6 +59,21 @@ export default function TrendAndClinicalHelp() {
   const [contactedLab, setContactedLab] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState<ScreeningHistoryItem[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
+
+  const labs = [
+    {
+      id: "lab-1",
+      name: "CityCare Diagnostic Centre",
+      phone: "+1 (800) 555-0199",
+      address: "Downtown Medical Plaza, Suite 300",
+    },
+    {
+      id: "lab-2",
+      name: "District Health Phlebotomy Lab",
+      phone: "+1 (800) 555-0142",
+      address: "Community Health Center, 2nd Floor",
+    },
+  ];
 
   useEffect(() => {
     let mounted = true;
