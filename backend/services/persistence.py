@@ -190,26 +190,40 @@ def persist_screening_and_report(
     }
 
     try:
-        # Step 1: Idempotent screening record status update (user-owned rows only).
+        # Step 1: screening row status update (update-only, never insert).
         # Image URL/path columns are OWNED by the frontend upload flow
         # (createScreeningWithImages + ROI storage uploads) and MUST NOT be
         # written here: this service never sees the real storage URLs, so
         # including those keys would overwrite good values with ""/guesses.
+        # Update-only (not upsert): the row is created by the frontend
+        # pre-upload carrying NOT NULL image columns. An upsert here would
+        # attempt an insert with null image paths, violate those constraints,
+        # and — worse — throw before the report write below ever runs,
+        # leaving the reports row stuck at pending/NULL forever.
+        # "unavailable" counts as complete: it always carries a full
+        # deterministic fallback report, never None.
+        complete = report_status in ("complete", "fallback", "unavailable")
         if user_id and is_valid_uuid(user_id):
-            screening_payload = {
-                "id": safe_screening_id,
-                "user_id": user_id,
-                "status": "completed" if report_status in ("complete", "fallback") else "failed",
-                "symptoms": symptoms.model_dump() if symptoms else {},
-            }
-            # Upsert into screenings (status/symptoms only; image columns untouched)
-            client.from_("screenings").upsert(screening_payload, on_conflict="id").execute()
+            try:
+                screening_payload = {
+                    "user_id": user_id,
+                    "status": "completed" if complete else "failed",
+                    "symptoms": symptoms.model_dump() if symptoms else {},
+                }
+                client.from_("screenings").update(screening_payload).eq("id", safe_screening_id).execute()
+            except Exception as exc:
+                logger.warning(
+                    "Supabase screening status update failed for %s (non-fatal): %s",
+                    safe_screening_id, exc,
+                )
 
-        # Step 2: Idempotent report record upsert (keyed on unique screening_id)
+        # Step 2: Idempotent report record upsert (keyed on unique screening_id).
+        # MUST always run even if Step 1 failed, so the report row never
+        # stays stuck at pending/NULL after analysis completed.
         report_payload = {
             "screening_id": safe_screening_id,
             "user_id": user_id if (user_id and is_valid_uuid(user_id)) else None,
-            "status": "complete" if report_status in ("complete", "fallback") else "failed",
+            "status": "complete" if complete else "failed",
             "result": structured_result,
         }
 
