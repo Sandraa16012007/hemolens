@@ -27,6 +27,14 @@ try:
 except ModuleNotFoundError:
     from routers import screen, features, nail_features, analyze, report
 
+try:
+    from backend.routers import chat as chat_router
+except ModuleNotFoundError:
+    try:
+        from routers import chat as chat_router
+    except ModuleNotFoundError:
+        chat_router = None  # type: ignore — chat router not yet added; routes stay disabled
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -101,6 +109,11 @@ app.include_router(features.router)
 app.include_router(nail_features.router)
 app.include_router(analyze.router)
 app.include_router(report.router)
+if chat_router is not None:
+    try:
+        app.include_router(chat_router.router)
+    except AttributeError:
+        logger.warning("Chat router module has no 'router'; skipping chat routes.")
 
 
 # ---------------------------------------------------------------------------
