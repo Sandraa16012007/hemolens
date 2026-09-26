@@ -206,3 +206,52 @@ def format_context_for_prompt(ctx: dict) -> str:
         return "\n".join(lines)
     except Exception:
         return "No prior screening context available."
+
+
+def format_stored_reports(reports: list[dict]) -> str:
+    """
+    Render compact stored reports (newest-first) as exact 4-line blocks::
+
+        Report: <date>
+        Hb: <lo-hi g/dL (screening estimate, not a lab measurement)>
+        Risk: <risk_category>
+        Key factors: <a, b, c>
+
+    Missing values render as ``unavailable``/``unknown ...`` placeholders —
+    never invented. Empty input yields a single "none available" line.
+    Never raises.
+    """
+    try:
+        if not isinstance(reports, list) or not reports:
+            return "Stored screening reports: none available."
+        blocks: list[str] = []
+        for item in reports:
+            if not isinstance(item, dict):
+                continue
+            date = item.get("date") or "unknown date"
+            hb = item.get("hb_range")
+            if isinstance(hb, (list, tuple)) and len(hb) >= 2:
+                try:
+                    hb_txt = (
+                        f"{float(hb[0])}-{float(hb[1])} g/dL "
+                        "(screening estimate, not a lab measurement)"
+                    )
+                except (TypeError, ValueError):
+                    hb_txt = "unavailable"
+            else:
+                hb_txt = "unavailable"
+            risk = item.get("risk_category") or "unknown risk"
+            factors = item.get("key_factors")
+            if isinstance(factors, list):
+                names = [str(f).strip() for f in factors if str(f).strip()]
+                factor_txt = ", ".join(names[:5]) if names else "unavailable"
+            else:
+                factor_txt = "unavailable"
+            blocks.append(
+                f"Report: {date}\nHb: {hb_txt}\nRisk: {risk}\nKey factors: {factor_txt}"
+            )
+        if not blocks:
+            return "Stored screening reports: none available."
+        return "Stored screening reports:\n" + "\n\n".join(blocks)
+    except Exception:
+        return "Stored screening reports: none available."
