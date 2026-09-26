@@ -96,10 +96,16 @@ def build_user_prompt(input_data: ScreeningReportInput) -> str:
             f"Severe < {ml.thresholds_applied.get('moderate_floor', 8.0)} g/dL"
         )
 
+    lang_instruction = ""
+    if input_data.language == "hi":
+        lang_instruction = "\nIMPORTANT LANGUAGE INSTRUCTION: The patient requested their report in Hindi ('hi'). All narrative fields ('summary', 'result_explanation', 'factors_considered', 'symptoms_considered', 'health_profile_summary', 'recommended_next_steps', 'confirmatory_testing_recommendation', 'disclaimer') MUST be written in clear, empathetic, patient-friendly Hindi in Devanagari script. Do NOT translate keys or numerical values."
+
     prompt = f"""Please generate a personalized, educational HemoLens screening report for this screening session:
+{lang_instruction}
 
 --- TRUSTED BACKEND INPUT DATA ---
 • Screening Session ID: {input_data.screening_id}
+• Target Language: {input_data.language}
 • Estimated Hemoglobin: {ml.hb_estimate:.2f} g/dL (Calibrated Range: {ml.hb_range[0]:.2f} - {ml.hb_range[1]:.2f} g/dL)
 • Model Confidence Score: {ml.confidence * 100:.0f}%
 • Estimated Anaemia Risk Category: {ml.risk_category.upper()}

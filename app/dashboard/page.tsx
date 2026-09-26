@@ -7,12 +7,13 @@ import HeroBanner from "./components/HeroBanner";
 import QuickActionCards from "./components/QuickActionCards";
 import LatestScreening from "./components/LatestScreening";
 import { ShieldCheck } from "lucide-react";
-
 import { useSidebar } from "../context/SidebarContext";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isCollapsed } = useSidebar();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-surface flex flex-col lg:flex-row" id="dashboard-page">
@@ -24,9 +25,8 @@ export default function DashboardPage() {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-          isCollapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isCollapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Top Header */}
         <DashboardHeader
@@ -49,7 +49,7 @@ export default function DashboardPage() {
             <div className="inline-flex items-center gap-1.5 text-xs text-muted">
               <ShieldCheck className="w-3.5 h-3.5 text-accent-dark" />
               <span>
-                HemoLens is a preliminary screening aid and does not diagnose anemia.
+                {t("dashboard.disclaimer", "HemoLens is a preliminary screening aid and does not diagnose anemia.")}
               </span>
             </div>
           </footer>

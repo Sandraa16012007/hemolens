@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import CameraCaptureModal from "./CameraCaptureModal";
 import type { ImageValidationState } from "@/lib/api/validation";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 export interface SelectedImageData {
   name: string;
@@ -39,6 +40,7 @@ export default function EyelidCaptureCard({
 }: EyelidCaptureCardProps) {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -100,11 +102,11 @@ export default function EyelidCaptureCard({
             1
           </span>
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            1. Lower-eyelid image
+            {t("screening.eyelidCardTitle", "1. Lower-Eyelid Image (Required)")}
           </h2>
         </div>
         <span className="px-2.5 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-primary text-[11px] font-semibold">
-          Required
+          {t("screening.eyelidRequired", "Required")}
         </span>
       </div>
 
@@ -123,7 +125,7 @@ export default function EyelidCaptureCard({
             />
           </div>
           <p className="text-[11px] font-medium text-muted mt-1.5 text-center">
-            Target: Palpebral Conjunctiva
+            {t("screening.eyelidTarget", "Target: Palpebral Conjunctiva")}
           </p>
         </div>
 
@@ -131,30 +133,14 @@ export default function EyelidCaptureCard({
         <div className="md:col-span-7 space-y-3.5">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-heading mb-1">
-              Place your lower eyelid clearly in view
+              {t("screening.eyelidCardTitle", "1. Lower-Eyelid Image (Required)")}
             </h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Gently pull down your lower eyelid with a clean finger until the pink conjunctival tissue is fully exposed to the lens.
+              {t("screening.eyelidCardDesc", "Gently pull down your lower eyelid to show the inner pink mucosa (palpebral conjunctiva).")}
             </p>
           </div>
 
-          {/* Checklist */}
-          <ul className="space-y-1.5 text-xs text-muted">
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-accent-dark shrink-0" />
-              <span>Use good lighting</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-accent-dark shrink-0" />
-              <span>Keep the camera steady</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-accent-dark shrink-0" />
-              <span>Make sure the lower eyelid is visible</span>
-            </li>
-          </ul>
-
-          {/* Action Buttons with Hover Animations */}
+          {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5 pt-1">
             <button
               type="button"
@@ -162,7 +148,7 @@ export default function EyelidCaptureCard({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-heading hover:bg-surface/80 hover:border-border/80 hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-muted" />
-              <span>Upload Image</span>
+              <span>{t("screening.uploadPhoto", "Upload Photo")}</span>
             </button>
             <button
               type="button"
@@ -170,7 +156,7 @@ export default function EyelidCaptureCard({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent-dark text-white text-xs font-semibold hover:bg-accent-dark/90 hover:scale-105 active:scale-95 transition-all shadow-xs hover:shadow-md cursor-pointer"
             >
               <Camera className="w-3.5 h-3.5" />
-              <span>Use Camera</span>
+              <span>{t("screening.takePhoto", "Take Photo")}</span>
             </button>
           </div>
         </div>
@@ -185,15 +171,14 @@ export default function EyelidCaptureCard({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
-            className={`flex flex-col gap-3 p-4 rounded-xl border transition-all ${
-              validationState.status === "validating"
-                ? "border-accent/50 bg-accent/10"
-                : validationState.status === "valid"
+            className={`flex flex-col gap-3 p-4 rounded-xl border transition-all ${validationState.status === "validating"
+              ? "border-accent/50 bg-accent/10"
+              : validationState.status === "valid"
                 ? "border-emerald-200 bg-emerald-50/50"
                 : validationState.status === "invalid"
-                ? "border-rose-200 bg-rose-50/60"
-                : "border-amber-200 bg-amber-50/50"
-            }`}
+                  ? "border-rose-200 bg-rose-50/60"
+                  : "border-amber-200 bg-amber-50/50"
+              }`}
           >
             {/* Top row: thumbnail + file name + status badge + retake */}
             <div className="flex items-center justify-between gap-3">
@@ -226,28 +211,28 @@ export default function EyelidCaptureCard({
                     {validationState.status === "validating" && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/30 text-accent-dark text-[11px] font-semibold animate-pulse">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Checking image quality...</span>
+                        <span>{t("screening.validating", "Checking image quality...")}</span>
                       </span>
                     )}
 
                     {validationState.status === "valid" && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300/60 text-[11px] font-bold">
                         <Check className="w-3 h-3 stroke-[2.5]" />
-                        <span>Quality Verified</span>
+                        <span>{t("screening.qualityVerified", "Quality Verified")}</span>
                       </span>
                     )}
 
                     {validationState.status === "invalid" && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 text-primary border border-rose-200 text-[11px] font-bold">
                         <AlertCircle className="w-3 h-3" />
-                        <span>Needs Retake</span>
+                        <span>{t("screening.needsRetake", "Needs Retake")}</span>
                       </span>
                     )}
 
                     {validationState.status === "error" && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold">
                         <AlertCircle className="w-3 h-3" />
-                        <span>Check Unavailable</span>
+                        <span>{t("screening.checkUnavailable", "Check Unavailable")}</span>
                       </span>
                     )}
                   </div>
@@ -261,7 +246,7 @@ export default function EyelidCaptureCard({
                 className="inline-flex items-center gap-1 text-xs font-semibold text-muted hover:text-heading transition-colors px-2.5 py-1.5 rounded-lg border border-border/80 bg-white hover:bg-surface cursor-pointer active:scale-95 shadow-2xs shrink-0"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Retake</span>
+                <span>{t("screening.retake", "Retake")}</span>
               </button>
             </div>
 

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Loader2, Info, AlertCircle } from "lucide-react";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface ScreeningBottomBarProps {
   hasEyelidImage: boolean;
@@ -18,6 +19,7 @@ export default function ScreeningBottomBar({
   isLoading,
   onAnalyze,
 }: ScreeningBottomBarProps) {
+  const { t } = useLanguage();
   const canAnalyze = hasEyelidImage && isValid && !isValidating && !isLoading;
 
   return (
@@ -33,22 +35,22 @@ export default function ScreeningBottomBar({
         <div className="flex items-center gap-2.5 w-full sm:w-auto">
           {!hasEyelidImage ? (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface border border-border text-muted text-xs font-medium">
-              <span>Lower-eyelid image required</span>
+              <span>{t("screening.eyelidRequired", "Lower-eyelid image required")}</span>
             </div>
           ) : isValidating ? (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-accent/25 border border-accent/40 text-heading text-xs font-semibold">
               <Loader2 className="w-3.5 h-3.5 text-accent-dark animate-spin" />
-              <span>Verifying image quality...</span>
+              <span>{t("screening.verifyingQuality", "Verifying image quality...")}</span>
             </div>
           ) : isValid ? (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-100/70 border border-emerald-300/60 text-emerald-900 text-xs font-semibold">
               <Check className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
-              <span>Ready for AI analysis</span>
+              <span>{t("screening.readyForAnalysis", "Ready for AI analysis")}</span>
             </div>
           ) : (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-50 border border-rose-200 text-primary text-xs font-semibold">
               <AlertCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span>Image requires retake before analyzing</span>
+              <span>{t("screening.retakeRequired", "Image requires retake before analyzing")}</span>
             </div>
           )}
         </div>
@@ -66,16 +68,16 @@ export default function ScreeningBottomBar({
           {isLoading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Saving & Analyzing...</span>
+              <span>{t("screening.analyzingButton", "Saving & Analyzing...")}</span>
             </>
           ) : isValidating ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Checking Image...</span>
+              <span>{t("screening.checkingImageButton", "Checking Image...")}</span>
             </>
           ) : (
             <>
-              <span>Analyze My Screening</span>
+              <span>{t("screening.analyzeButton", "Analyze My Screening")}</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}
@@ -86,7 +88,7 @@ export default function ScreeningBottomBar({
       <div className="flex items-center justify-center gap-1.5 text-xs text-muted text-center pt-1">
         <Info className="w-3.5 h-3.5 text-muted/80 shrink-0" />
         <span>
-          Your images are used for preliminary screening. HemoLens does not provide a medical diagnosis.
+          {t("screening.disclaimer", "Your images are used for preliminary screening. HemoLens does not provide a medical diagnosis.")}
         </span>
       </div>
     </div>

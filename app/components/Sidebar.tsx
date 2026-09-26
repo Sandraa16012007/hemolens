@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { signOut } from "@/lib/supabase/auth";
 import { useSidebar } from "../context/SidebarContext";
+import { useLanguage } from "../context/LanguageContext";
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -26,6 +27,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { isCollapsed, toggleCollapse } = useSidebar();
+  const { t } = useLanguage();
 
   const handleLogout = async () => {
     if (onClose) onClose();
@@ -36,25 +38,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const mainNavItems = [
     {
-      name: "Dashboard",
+      name: t("nav.dashboard", "Dashboard"),
       href: "/dashboard",
       icon: LayoutDashboard,
       active: pathname === "/dashboard",
     },
     {
-      name: "New Screening",
+      name: t("nav.newScreening", "New Screening"),
       href: "/new-screening",
       icon: PlusCircle,
       active: pathname === "/new-screening",
     },
     {
-      name: "Screening History",
+      name: t("nav.screeningHistory", "Screening History"),
       href: "/screening-history",
       icon: History,
       active: pathname === "/screening-history",
     },
     {
-      name: "AI Assistant",
+      name: t("nav.aiAssistant", "AI Assistant"),
       href: "/ai-assistant",
       icon: Bot,
       active: pathname === "/ai-assistant",
@@ -63,13 +65,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const bottomNavItems = [
     {
-      name: "Profile",
+      name: t("nav.profile", "Profile"),
       href: "/profile",
       icon: User,
       active: pathname === "/profile",
     },
     {
-      name: "Log Out",
+      name: t("nav.logout", "Log Out"),
       href: "/",
       icon: LogOut,
       active: false,
@@ -87,11 +89,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-border flex flex-col justify-between p-3 sm:p-4 transition-all duration-300 ${
-          isCollapsed ? "lg:w-20" : "lg:w-64"
-        } w-64 ${
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-border flex flex-col justify-between p-3 sm:p-4 transition-all duration-300 ${isCollapsed ? "lg:w-20" : "lg:w-64"
+          } w-64 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          }`}
       >
         {/* Top Section: Logo & Main Navigation */}
         <div className="flex flex-col gap-5">
@@ -159,18 +159,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   href={item.href}
                   onClick={onClose}
                   title={isCollapsed ? item.name : undefined}
-                  className={`flex items-center ${
-                    isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
-                  } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${
-                    item.active
+                  className={`flex items-center ${isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
+                    } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${item.active
                       ? "bg-accent/25 text-heading font-semibold shadow-xs border border-accent/40"
                       : "text-muted hover:text-heading hover:bg-surface hover:translate-x-0.5"
-                  }`}
+                    }`}
                 >
                   <Icon
-                    className={`w-4 h-4 shrink-0 transition-colors ${
-                      item.active ? "text-accent-dark" : "text-muted"
-                    }`}
+                    className={`w-4 h-4 shrink-0 transition-colors ${item.active ? "text-accent-dark" : "text-muted"
+                      }`}
                   />
                   {!isCollapsed && <span className="truncate">{item.name}</span>}
                 </Link>
@@ -190,9 +187,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   type="button"
                   onClick={handleLogout}
                   title={isCollapsed ? item.name : undefined}
-                  className={`flex items-center ${
-                    isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
-                  } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] text-muted hover:text-primary hover:bg-primary/5 hover:translate-x-0.5 text-left w-full`}
+                  className={`flex items-center ${isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
+                    } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] text-muted hover:text-primary hover:bg-primary/5 hover:translate-x-0.5 text-left w-full`}
                 >
                   <Icon className="w-4 h-4 shrink-0 transition-colors text-muted group-hover:text-primary" />
                   {!isCollapsed && <span className="truncate">{item.name}</span>}
@@ -206,13 +202,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 href={item.href}
                 onClick={onClose}
                 title={isCollapsed ? item.name : undefined}
-                className={`flex items-center ${
-                  isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
-                } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${
-                  item.active
+                className={`flex items-center ${isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3.5 py-2.5"
+                  } rounded-xl text-sm font-medium transition-all cursor-pointer active:scale-[0.98] ${item.active
                     ? "bg-accent/25 text-heading font-semibold shadow-xs border border-accent/40"
                     : "text-muted hover:text-heading hover:bg-surface hover:translate-x-0.5"
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4 shrink-0 transition-colors text-muted" />
                 {!isCollapsed && <span className="truncate">{item.name}</span>}

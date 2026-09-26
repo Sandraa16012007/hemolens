@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Camera, Clock, CheckCircle2, ShieldCheck, ArrowRight } from "lucide-react";
 import { getCurrentUser } from "@/lib/supabase/auth";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface HeroBannerProps {
   onStartScreening?: () => void;
@@ -13,7 +14,8 @@ interface HeroBannerProps {
 
 export default function HeroBanner({ onStartScreening, userName }: HeroBannerProps) {
   const [fetchedName, setFetchedName] = useState<string | null>(null);
-  const fullName = userName || fetchedName || "Full Name";
+  const fullName = userName || fetchedName || "User";
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (userName) return;
@@ -50,29 +52,29 @@ export default function HeroBanner({ onStartScreening, userName }: HeroBannerPro
           {/* Badge */}
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-accent/30 text-accent-dark text-[11px] font-semibold">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Non-Invasive Optical Screening</span>
+            <span>{t("header.tagline", "Non-invasive AI Screening")}</span>
           </div>
 
           {/* Heading with User's Full Name */}
           <h1 className="text-xl sm:text-2xl font-extrabold text-heading tracking-tight">
-            Ready for your next screening, {fullName}?
+            {t("dashboard.readyForNext", "Ready for your next screening?")}, {fullName}?
           </h1>
 
           {/* Subcopy */}
           <p className="text-xs sm:text-sm text-muted leading-relaxed max-w-xl">
-            Check your current anemia risk using a lower-eyelid image.
+            {t("dashboard.heroSubtitle", "Analyze conjunctival pallor using your smartphone camera for rapid hemoglobin estimation and WHO-calibrated wellness guidance.")}
           </p>
 
           {/* Feature Badges */}
           <div className="flex flex-wrap items-center gap-3 pt-0.5 text-xs text-muted">
             <div className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-accent-dark" />
-              <span>Quick 2-minute check</span>
+              <span>{t("dashboard.newScreeningDesc", "Capture an eyelid image and check your Hb estimate in minutes.")}</span>
             </div>
             <span className="w-1 h-1 rounded-full bg-border" />
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-accent-dark" />
-              <span>Needle-free</span>
+              <span>{t("dashboard.heroTitle", "Non-Invasive Anemia Screening")}</span>
             </div>
           </div>
         </div>
@@ -86,7 +88,7 @@ export default function HeroBanner({ onStartScreening, userName }: HeroBannerPro
             id="start-new-screening-button"
           >
             <Camera className="w-4 h-4" />
-            <span>Start New Screening</span>
+            <span>{t("dashboard.startNewScreening", "Start New Screening")}</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

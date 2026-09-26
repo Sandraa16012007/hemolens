@@ -230,6 +230,7 @@ async def analyze_eyelid_screening(
     previous_anemia_history: Optional[str] = Form(None, description="History of diagnosed anemia"),
     medical_conditions: Optional[str] = Form(None, description="Comma-separated or JSON list of medical conditions"),
     symptoms: Optional[str] = Form(None, description="Comma-separated or JSON dict of reported symptoms"),
+    language: Optional[str] = Form("en", description="Target language code ('en' | 'hi')"),
     screening_id: Optional[str] = Form(None, description="Optional screening identifier UUID"),
     skip_validation: bool = Form(False, description="Whether to bypass quality checks (e.g. if already validated)"),
     generate_ai_report: bool = Form(True, description="Whether to generate Gemini personalized report"),
@@ -423,6 +424,7 @@ async def analyze_eyelid_screening(
         ml_result=ml_ctx,
         user_profile=health_profile_ctx,
         symptoms=symptoms_ctx,
+        language=language or "en",
     )
 
     report_status = "complete"

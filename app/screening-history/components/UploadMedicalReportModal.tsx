@@ -15,6 +15,8 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { useLanguage } from "@/app/context/LanguageContext";
+
 interface UploadMedicalReportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,6 +39,7 @@ export default function UploadMedicalReportModal({
   const [isUploading, setIsUploading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   const reportTypes = [
     { id: "cbc", label: "CBC Blood Panel" },
@@ -113,7 +116,7 @@ export default function UploadMedicalReportModal({
                   <CheckCircle2 className="w-8 h-8" />
                 </motion.div>
                 <h3 className="text-xl font-bold text-heading">
-                  Medical Report Uploaded!
+                  {t("history.reportUploaded", "Medical Report Uploaded!")}
                 </h3>
                 <p className="text-xs sm:text-sm text-muted max-w-sm mx-auto">
                   Your lab results and doctor notes have been securely linked to your HemoLens clinical history.
@@ -128,7 +131,7 @@ export default function UploadMedicalReportModal({
                   </div>
                   <div>
                     <h2 className="text-lg sm:text-xl font-bold text-heading">
-                      Add Medical Reports & Lab Results
+                      {t("history.addMedicalReports", "Add Medical Reports")}
                     </h2>
                     <p className="text-xs text-muted mt-0.5">
                       Upload venous blood test reports, ferritin tests, or physician clinical notes
@@ -150,11 +153,10 @@ export default function UploadMedicalReportModal({
                             key={t.id}
                             type="button"
                             onClick={() => setReportType(t.id)}
-                            className={`px-2.5 py-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer ${
-                              isSelected
+                            className={`px-2.5 py-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer ${isSelected
                                 ? "border-accent-dark bg-accent/20 text-heading ring-1 ring-accent-dark/40 font-semibold"
                                 : "border-border bg-white text-muted hover:text-heading hover:bg-surface"
-                            }`}
+                              }`}
                           >
                             {t.label}
                           </button>
@@ -317,7 +319,7 @@ export default function UploadMedicalReportModal({
                       onClick={onClose}
                       className="px-3.5 py-2 text-xs font-semibold text-muted hover:text-heading transition-colors cursor-pointer"
                     >
-                      Cancel
+                      {t("common.cancel", "Cancel")}
                     </button>
 
                     <button
@@ -333,7 +335,7 @@ export default function UploadMedicalReportModal({
                       ) : (
                         <>
                           <UploadCloud className="w-3.5 h-3.5" />
-                          <span>Save & Upload Report</span>
+                          <span>{t("history.saveUploadReport", "Save & Upload Report")}</span>
                         </>
                       )}
                     </button>

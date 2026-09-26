@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { History, Bot, ArrowRight } from "lucide-react";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 export default function QuickActionCards() {
+  const { t } = useLanguage();
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5" id="quick-action-cards">
       {/* Card 1: Screening History */}
@@ -21,10 +24,10 @@ export default function QuickActionCards() {
             <History className="w-4 h-4" strokeWidth={1.8} />
           </div>
           <h2 className="text-base sm:text-lg font-bold text-heading mb-1">
-            Screening History
+            {t("dashboard.historyTitle", "Screening History")}
           </h2>
           <p className="text-xs sm:text-sm text-muted leading-relaxed mb-4">
-            Review your previous screening results, dates, and historical trends.
+            {t("dashboard.historyDesc", "Track your hemoglobin trends over time and view past report details.")}
           </p>
         </div>
 
@@ -34,7 +37,7 @@ export default function QuickActionCards() {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
             id="btn-view-history"
           >
-            <span>View History</span>
+            <span>{t("dashboard.viewHistory", "View History")}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -54,10 +57,10 @@ export default function QuickActionCards() {
             <Bot className="w-4 h-4" strokeWidth={1.8} />
           </div>
           <h2 className="text-base sm:text-lg font-bold text-heading mb-1">
-            AI Health Assistant
+            {t("dashboard.aiAssistantTitle", "AI Health Assistant")}
           </h2>
           <p className="text-xs sm:text-sm text-muted leading-relaxed mb-4">
-            Ask questions about your results, symptoms, dietary iron, and health next steps.
+            {t("dashboard.aiAssistantDesc", "Ask questions about anemia symptoms, nutrition, and blood tests.")}
           </p>
         </div>
 
@@ -67,7 +70,7 @@ export default function QuickActionCards() {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
             id="btn-talk-to-hemoai"
           >
-            <span>Talk to HemoAI</span>
+            <span>{t("nav.aiAssistant", "AI Assistant")}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>

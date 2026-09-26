@@ -86,6 +86,7 @@ class ScreeningReportInput(BaseModel):
     ml_result: MLScreeningContext = Field(..., description="Verified ML and clinical classification results")
     user_profile: UserHealthProfileContext = Field(default_factory=UserHealthProfileContext, description="User health demographics")
     symptoms: SymptomsContext = Field(default_factory=SymptomsContext, description="Current reported symptoms")
+    language: str = Field(default="en", description="Target language code for the report narrative ('en' | 'hi')")
 
 
 # ---------------------------------------------------------------------------
