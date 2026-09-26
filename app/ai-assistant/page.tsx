@@ -11,6 +11,56 @@ import ChatDisclaimer from "./components/ChatDisclaimer";
 
 import { useSidebar } from "../context/SidebarContext";
 import { useLanguage } from "../context/LanguageContext";
+import { createClient } from "@/lib/supabase/client";
+import { getUserScreeningHistory } from "@/lib/supabase/screenings";
+import { sendChatMessage, getChatMemory } from "@/lib/api/assistant";
+
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function createSessionId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+const GENERIC_GREETING =
+  "Hi there! I'm HemoAI, your health assistant. Ask me about anemia screening, iron-rich foods, or next steps.";
+
+function bannerFromMemoryReport(
+  report: unknown
+): { riskLabel: string; hbLabel: string } | null {
+  if (!report || typeof report !== "object") return null;
+  const r = report as Record<string, unknown>;
+  const riskRaw =
+    r["risk_category"] ?? r["riskLabel"] ?? r["risk_label"] ?? r["riskCategory"];
+  if (typeof riskRaw !== "string" || !riskRaw.trim()) return null;
+  if (riskRaw === "Pending" || riskRaw === "Unclassifiable") return null;
+  const hbRaw = r["hb_range"] ?? r["hbRange"] ?? r["hb_label"] ?? r["hbLabel"];
+  let hbLabel: string | null = null;
+  if (Array.isArray(hbRaw) && hbRaw.length >= 2) {
+    const lo = Number(hbRaw[0]);
+    const hi = Number(hbRaw[1]);
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+      hbLabel = `${lo}–${hi} g/dL`;
+    }
+  } else if (
+    typeof hbRaw === "string" &&
+    hbRaw.trim() !== "" &&
+    hbRaw.trim() !== "—"
+  ) {
+    const trimmed = hbRaw.trim();
+    hbLabel = trimmed.includes("g/dL") ? trimmed : `${trimmed} g/dL`;
+  }
+  if (!hbLabel) return null;
+  return { riskLabel: riskRaw, hbLabel };
+}
 
 export default function AIAssistantPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,34 +70,16 @@ export default function AIAssistantPage() {
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Initial Conversation State matching layout mockup
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "msg-1",
-      sender: "assistant",
-      time: "10:42 AM",
-      text: "Hi Alex! Your recent screening indicated a moderate risk of anemia. How are you feeling today, or what questions can I help answer?",
-    },
-    {
-      id: "msg-2",
-      sender: "user",
-      time: "10:43 AM",
-      text: "Why am I feeling dizzy?",
-    },
-    {
-      id: "msg-3",
-      sender: "assistant",
-      time: "10:43 AM",
-      text: "When hemoglobin is slightly low, your body carries less oxygen, which can cause lightheadedness or fatigue—especially when standing up quickly.",
-      tips: [
-        "Stay well hydrated throughout the day",
-        "Incorporate iron-rich foods (spinach, beans, lentils)",
-        "Rest when you feel fatigued",
-      ],
-      disclaimer:
-        "Remember, this screening is an early guide. We recommend scheduling a simple routine blood test with your doctor to verify your iron levels.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [banner, setBanner] = useState<{
+    riskLabel: string;
+    hbLabel: string;
+  } | null>(null);
+  const [sessionId] = useState<string>(() => createSessionId());
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const lastUserMessageRef = useRef<string>("");
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -57,80 +89,261 @@ export default function AIAssistantPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSendMessage = (userText: string) => {
-    if (!userText.trim()) return;
+  useEffect(() => {
+    let mounted = true;
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    async function loadContext() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!mounted) return;
+        setUserId(user?.id ?? null);
 
-    const newMsg: Message = {
+        if (!user) {
+          setBanner(null);
+          setMessages([
+            {
+              id: `greeting-${Date.now()}`,
+              sender: "assistant",
+              time: formatTime(new Date()),
+              text: GENERIC_GREETING,
+            },
+          ]);
+          setApiError("Please sign in to chat with HemoAI.");
+          return;
+        }
+
+        let historyMessages: Message[] = [];
+        let memRiskLabel: string | null = null;
+        let memHbLabel: string | null = null;
+
+        try {
+          const memory = await getChatMemory();
+          if (!mounted) return;
+          const convos = Array.isArray(memory.conversations)
+            ? memory.conversations.slice(-20)
+            : [];
+          historyMessages = convos.map((c, idx) => {
+            let time = "—";
+            if (c.timestamp) {
+              const d = new Date(c.timestamp);
+              if (!Number.isNaN(d.getTime())) time = formatTime(d);
+            }
+            const msg: Message = {
+              id: `history-${Date.now()}-${idx}`,
+              sender: c.role === "user" ? "user" : "assistant",
+              time,
+              text: c.content,
+            };
+            return msg;
+          });
+          const firstReport =
+            Array.isArray(memory.reports) && memory.reports.length > 0
+              ? memory.reports[0]
+              : null;
+          if (firstReport) {
+            const parsed = bannerFromMemoryReport(firstReport);
+            if (parsed) {
+              memRiskLabel = parsed.riskLabel;
+              memHbLabel = parsed.hbLabel;
+            }
+          }
+        } catch {
+          // Ignore memory errors — fall back to screening history.
+          historyMessages = [];
+        }
+
+        if (!mounted) return;
+
+        if (historyMessages.length > 0) {
+          if (memRiskLabel && memHbLabel) {
+            setBanner({ riskLabel: memRiskLabel, hbLabel: memHbLabel });
+          } else {
+            try {
+              const { data: history } = await getUserScreeningHistory();
+              if (!mounted) return;
+              const latest =
+                history && history.length > 0 ? history[0] : null;
+              if (
+                latest &&
+                latest.riskLevel !== "Pending" &&
+                latest.riskLevel !== "Unclassifiable" &&
+                latest.hbRange !== "—"
+              ) {
+                setBanner({
+                  riskLabel: latest.riskLevel,
+                  hbLabel: `${latest.hbRange} g/dL`,
+                });
+              } else {
+                setBanner(null);
+              }
+            } catch {
+              if (!mounted) return;
+              setBanner(null);
+            }
+          }
+          if (!mounted) return;
+          setMessages(historyMessages);
+          return;
+        }
+
+        let riskLabel: string | null = memRiskLabel;
+        let hbLabel: string | null = memHbLabel;
+
+        if (!riskLabel || !hbLabel) {
+          try {
+            const { data: history } = await getUserScreeningHistory();
+            if (!mounted) return;
+            const latest =
+              history && history.length > 0 ? history[0] : null;
+            if (
+              latest &&
+              latest.riskLevel !== "Pending" &&
+              latest.riskLevel !== "Unclassifiable" &&
+              latest.hbRange !== "—"
+            ) {
+              riskLabel = latest.riskLevel;
+              hbLabel = `${latest.hbRange} g/dL`;
+            }
+          } catch {
+            // Ignore history errors — fall back to generic greeting/banner.
+          }
+        }
+
+        if (!mounted) return;
+
+        if (riskLabel && hbLabel) {
+          setBanner({ riskLabel, hbLabel });
+          setMessages([
+            {
+              id: `greeting-${Date.now()}`,
+              sender: "assistant",
+              time: formatTime(new Date()),
+              text: `Hi there! Your recent screening indicated ${riskLabel.toLowerCase()} (${hbLabel}). How are you feeling today, or what questions can I help answer?`,
+            },
+          ]);
+        } else {
+          setBanner(null);
+          setMessages([
+            {
+              id: `greeting-${Date.now()}`,
+              sender: "assistant",
+              time: formatTime(new Date()),
+              text: GENERIC_GREETING,
+            },
+          ]);
+        }
+      } catch {
+        if (!mounted) return;
+        setBanner(null);
+        setMessages([
+          {
+            id: `greeting-${Date.now()}`,
+            sender: "assistant",
+            time: formatTime(new Date()),
+            text: GENERIC_GREETING,
+          },
+        ]);
+      } finally {
+        if (mounted) setContextLoading(false);
+      }
+    }
+
+    loadContext();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSendMessage = async (userText: string) => {
+    const trimmed = userText.trim();
+    if (!trimmed || isTyping) return;
+
+    if (!userId) {
+      setApiError("Please sign in to chat with HemoAI.");
+      return;
+    }
+
+    const timeStr = formatTime(new Date());
+    const userMsg: Message = {
       id: `msg-${Date.now()}`,
       sender: "user",
       time: timeStr,
-      text: userText,
+      text: trimmed,
     };
 
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    lastUserMessageRef.current = trimmed;
     setIsTyping(true);
+    setApiError(null);
 
-    // Simulate intelligent contextual response
-    setTimeout(() => {
-      let botResponse = "";
-      let botTips: string[] | undefined = undefined;
-
-      const lower = userText.toLowerCase();
-
-      if (lower.includes("food") || lower.includes("eat") || lower.includes("diet")) {
-        botResponse =
-          "Focusing on bioavailable iron sources helps support hemoglobin synthesis. Pair plant-based iron with Vitamin C to increase absorption.";
-        botTips = [
-          "Heme iron: lean poultry, fish, eggs",
-          "Non-heme iron: dark leafy greens, chickpeas, fortified whole grains",
-          "Vitamin C boosters: bell peppers, citrus fruits, tomatoes",
-        ];
-      } else if (lower.includes("doctor") || lower.includes("see a doctor") || lower.includes("clinic")) {
-        botResponse =
-          "Yes, we encourage scheduling a primary care consultation. Since HemoLens is an optical screening tool, your physician can order a Complete Blood Count (CBC) and serum ferritin panel to confirm your status.";
-        botTips = [
-          "Bring your HemoLens screening report to your visit",
-          "Mention your current symptoms and dietary habits",
-        ];
-      } else if (lower.includes("how does") || lower.includes("work") || lower.includes("screening")) {
-        botResponse =
-          "HemoLens analyzes palpebral conjunctiva tissue from your lower eyelid photo. By measuring micro-vascular redness coefficients and spectral optical density, it estimates approximate hemoglobin concentrations.";
-      } else if (lower.includes("energy") || lower.includes("tired") || lower.includes("fatigue")) {
-        botResponse =
-          "Fatigue is one of the most common signs when cellular oxygen delivery is reduced.";
-        botTips = [
-          "Prioritize 7-8 hours of quality restorative sleep",
-          "Avoid heavy caffeine right after meals as it inhibits iron uptake",
-          "Stay consistently hydrated throughout the afternoon",
-        ];
-      } else {
-        botResponse = `Thanks for asking. Based on your screening range (10.2–11.0 g/dL), supporting your red blood cell health through balanced nutrition and proper rest is a great first step.`;
-        botTips = [
-          "Monitor any changes in fatigue or lightheadedness",
-          "Consult a doctor for confirmatory diagnostic lab tests",
-        ];
-      }
-
+    try {
+      const reply = await sendChatMessage({
+        sessionId,
+        message: trimmed,
+      });
       const botMsg: Message = {
         id: `msg-${Date.now() + 1}`,
         sender: "assistant",
-        time: timeStr,
-        text: botResponse,
-        tips: botTips,
-        disclaimer:
-          "HemoLens provides educational wellness insights and does not substitute for medical evaluation.",
+        time: formatTime(new Date()),
+        text: reply.message,
+        tips: reply.tips,
+        disclaimer: reply.disclaimer,
       };
-
-      setIsTyping(false);
       setMessages((prev) => [...prev, botMsg]);
-    }, 1000);
+    } catch (err) {
+      setApiError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsTyping(false);
+    }
   };
+
+  const handleRetry = async () => {
+    const last = lastUserMessageRef.current.trim();
+    if (!last || isTyping) return;
+
+    if (!userId) {
+      setApiError("Please sign in to chat with HemoAI.");
+      return;
+    }
+
+    setIsTyping(true);
+    setApiError(null);
+
+    try {
+      const reply = await sendChatMessage({
+        sessionId,
+        message: last,
+      });
+      const botMsg: Message = {
+        id: `msg-${Date.now() + 1}`,
+        sender: "assistant",
+        time: formatTime(new Date()),
+        text: reply.message,
+        tips: reply.tips,
+        disclaimer: reply.disclaimer,
+      };
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (err) {
+      setApiError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const inputDisabled = isTyping || contextLoading;
 
   return (
     <div className="min-h-screen bg-surface flex flex-col lg:flex-row" id="ai-assistant-page">
@@ -158,7 +371,11 @@ export default function AIAssistantPage() {
         {/* Main Chat Container */}
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-col justify-between space-y-4">
           {/* Top Context Banner */}
-          <ChatContextBanner />
+          <ChatContextBanner
+            riskLabel={banner?.riskLabel ?? null}
+            hbLabel={banner?.hbLabel ?? null}
+            loading={contextLoading}
+          />
 
           {/* Conversation History */}
           <div className="flex-1 overflow-y-auto space-y-4 pr-1 max-h-[calc(100vh-280px)] min-h-[300px]">
@@ -168,15 +385,38 @@ export default function AIAssistantPage() {
 
           {/* Bottom Interactive Area */}
           <div className="space-y-3 pt-2">
+            {apiError ? (
+              <div
+                role="alert"
+                className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700"
+              >
+                <span className="flex-1">{apiError}</span>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-white border border-rose-200 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
             {/* Suggested Prompts Grid */}
-            <SuggestedPrompts onSelectPrompt={handleSendMessage} />
+            <div
+              className={
+                inputDisabled ? "pointer-events-none opacity-60" : undefined
+              }
+              aria-disabled={inputDisabled}
+            >
+              <SuggestedPrompts onSelectPrompt={handleSendMessage} />
+            </div>
 
             {/* Chat Input Field */}
             <ChatInputBar
               input={input}
               onInputChange={setInput}
               onSend={handleSendMessage}
-              disabled={isTyping}
+              disabled={inputDisabled}
             />
 
             {/* Footer Disclaimer */}

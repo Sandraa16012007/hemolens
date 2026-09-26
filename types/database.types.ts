@@ -149,6 +149,23 @@ export interface Database {
           updated_at?: string;
         };
       };
+      chat_memory: {
+        Row: {
+          user_id: string;
+          facts: Json;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          facts?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          facts?: Json;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
