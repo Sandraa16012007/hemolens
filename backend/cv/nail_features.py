@@ -16,15 +16,20 @@ Research basis (RGB nail-image methodology):
   simplicity but noted averaging over fingers improves robustness).
 
 This module MUST NOT implement Hb prediction, anemia classification,
-Random Forest / XGBoost, MediaPipe, or any neural segmentation model.
+Random Forest / XGBoost, or any neural plate-segmentation model.
 It only extracts features. It MUST NOT modify the eyelid pipeline
 (`eyelid_features.py`), the nail validation gate
 (`routers/screen.py::validate_image_nail`), or the eyelid ML schema.
+It uses an extractor-local MediaPipe HandLandmarker ONLY as a geometric
+prior for nail ROI placement (fingertip-anchored search crops); the nail
+plate segmentation itself stays deterministic OpenCV/numpy.
 
 Pipeline implemented here:
   validated nail image bytes (already passed validate-image-nail)
-  -> deterministic OpenCV nail ROI detection (reuses validated
-     candidate geometry from `routers/screen.py::_detect_nail_candidates`)
+  -> extractor-local hand-prioritized ROI detection
+     (MediaPipe Hands fingertip crops + plate-likelihood segmentation;
+      distal-plate fallback for fist close-ups where the palm detector
+      cannot fire; legacy validator Top-Hat candidate reuse as last resort)
   -> per-nail plate mask (Otsu bright-plate segmentation in bbox)
   -> inner 60% x 60% analysis region (intersection with plate mask)
   -> white-reference illumination normalization (explicit fallback)
@@ -33,8 +38,9 @@ Pipeline implemented here:
   -> median aggregation across valid nails (model-facing 21-vector)
   -> ROI-marked image (numbered bboxes + inner regions)
 
-Allowed dependencies only: opencv-python-headless, numpy.
-(No mediapipe, no sklearn, no LLM.)
+Allowed dependencies only: opencv-python-headless, numpy, mediapipe
+(MediaPipe Tasks API used solely for the extractor-local HandLandmarker
+geometric prior; no sklearn, no LLM.)
 
 Conventions mirrored from `eyelid_features.py`:
 - `FEATURE_NAMES` / `FEATURE_DIM` fixed ordered schema.
@@ -59,6 +65,7 @@ from __future__ import annotations
 import base64
 import logging
 import math
+import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -120,6 +127,118 @@ AGGREGATION_METHOD: str = "median_across_valid_nails"
 
 # Storage for generated images (mirrors eyelid `storage/eyelid_features`).
 _DEFAULT_STORAGE_DIR = Path(__file__).parent.parent / "storage" / "nail_features"
+
+# ---------------------------------------------------------------------------
+# MediaPipe HandLandmarker — extractor-local geometric prior (never raises)
+# ---------------------------------------------------------------------------
+# Mirrors the FaceLandmarker singleton pattern in
+# `backend/routers/screen.py` (download once into backend/models/, module
+# singleton, _HAND_LANDMARKER_READY flag, graceful fallback). The landmarker
+# is used ONLY to place fingertip-anchored search crops; plate segmentation
+# inside each crop stays deterministic OpenCV/numpy.
+_HAND_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+_HAND_MODEL_DIR = Path(__file__).parent.parent / "models"
+_HAND_MODEL_PATH = _HAND_MODEL_DIR / "hand_landmarker.task"
+_HAND_MAX_HANDS: int = 2
+_HAND_MIN_DETECTION_CONFIDENCE: float = 0.3
+_HAND_MIN_PRESENCE_CONFIDENCE: float = 0.3
+_HAND_MIN_TRACKING_CONFIDENCE: float = 0.3
+
+
+def _ensure_hand_model() -> Optional[Path]:
+    """Download the HandLandmarker bundle once; None when unavailable."""
+    try:
+        _HAND_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        if not _HAND_MODEL_PATH.exists():
+            logger.info(
+                "Downloading MediaPipe HandLandmarker model (~8 MB) to %s …",
+                _HAND_MODEL_PATH,
+            )
+            urllib.request.urlretrieve(_HAND_MODEL_URL, _HAND_MODEL_PATH)
+            logger.info("HandLandmarker model download complete.")
+        return _HAND_MODEL_PATH
+    except Exception as exc:
+        logger.warning(f"HandLandmarker model unavailable: {exc}")
+        return None
+
+
+# Initialise hand landmarker once at import time (module-level singleton).
+try:
+    _hand_model_path = _ensure_hand_model()
+    if _hand_model_path is None:
+        raise RuntimeError("hand landmark model unavailable")
+    import mediapipe as _mediapipe
+    import mediapipe.tasks as _mp_tasks
+
+    _hand_landmarker_options = _mp_tasks.vision.HandLandmarkerOptions(
+        base_options=_mp_tasks.BaseOptions(
+            model_asset_path=str(_hand_model_path)
+        ),
+        running_mode=_mp_tasks.vision.RunningMode.IMAGE,
+        num_hands=_HAND_MAX_HANDS,
+        min_hand_detection_confidence=_HAND_MIN_DETECTION_CONFIDENCE,
+        min_hand_presence_confidence=_HAND_MIN_PRESENCE_CONFIDENCE,
+        min_tracking_confidence=_HAND_MIN_TRACKING_CONFIDENCE,
+    )
+    _hand_landmarker = _mp_tasks.vision.HandLandmarker.create_from_options(
+        _hand_landmarker_options
+    )
+    logger.info("MediaPipe HandLandmarker initialised successfully.")
+    _HAND_LANDMARKER_READY = True
+except Exception as _init_err:  # never raise — extractor falls back gracefully
+    logger.warning(
+        "MediaPipe HandLandmarker could not be initialised: %s. "
+        "Nail ROI falls back to validator-reuse candidates.",
+        _init_err,
+    )
+    _mediapipe = None  # type: ignore[no-redef]
+    _hand_landmarker = None
+    _HAND_LANDMARKER_READY = False
+
+#: Per-finger (TIP, DIP/IP, MCP) landmark index triples. Thumb uses IP=3
+#: as its distal joint; all other fingers use DIP (7/11/15/19).
+_FINGER_JOINTS: tuple[tuple[int, int, int], ...] = (
+    (4, 3, 2),  # thumb
+    (8, 7, 5),  # index
+    (12, 11, 9),  # middle
+    (16, 15, 13),  # ring
+    (20, 19, 17),  # pinky
+)
+
+#: Plate-likelihood priors shared by the crop segmenter (fraction of frame).
+_PLATE_MIN_AREA_FRAC: float = 0.005  # 0.5% of frame
+_PLATE_MAX_AREA_FRAC: float = 0.08  # 8% of frame
+_PLATE_MIN_SOLIDITY: float = 0.7
+#: Aspect gate for fingertip-crop segmentation (spec).
+_PLATE_MIN_ASPECT: float = 0.6
+_PLATE_MAX_ASPECT: float = 1.4
+#: Slightly wider aspect gate for the no-hand distal fallback (fist
+#: close-ups foreshorten plates; e.g. good2.png index nail is 0.56).
+_DISTAL_MIN_ASPECT: float = 0.5
+_DISTAL_MAX_ASPECT: float = 1.5
+#: Distal location prior: nail-plate centres must lie at/after 40% of the
+#: frame height (rejects knuckle-band / top-background highlights).
+_DISTAL_MIN_CY_FRAC: float = 0.40
+#: Row-consistency band: kept distal candidates must cluster within ±15%
+#: of the frame height around their median centre-y (fingernails present
+#: as a horizontal row; isolated highlights are rejected).
+_DISTAL_ROW_BAND_FRAC: float = 0.15
+#: Low-saturation + bright seed cue for nail plates (HSV).
+_SEED_MAX_SAT: int = 70
+_SEED_MIN_VAL: int = 150
+#: Fingertip-crop gate: a finger is skipped unless at least this fraction
+#: of its search crop holds low-saturation bright (plate-like) pixels.
+#: Rejects crops placed on saturated skin by false-positive hand
+#: detections (fist close-ups confuse the palm detector).
+_FINGER_SEED_MIN_FRAC: float = 0.02
+#: Finger-proportion gate: a fingertip-crop hit with either bbox side
+#: longer than this multiple of the DIP-TIP length is rejected (nail
+#: plates scale with the distal segment; larger bright blobs are palm /
+#: background, e.g. beside a misplaced tip of a false-positive hand).
+_FINGER_MAX_PLATE_SCALE: float = 1.8
 
 # ---------------------------------------------------------------------------
 # Helpers: decode / encode / storage (mirror eyelid conventions)
@@ -194,6 +313,358 @@ def _get_nail_candidates(img_bgr: np.ndarray) -> list[dict[str, Any]]:
         return list(_detect_nail_candidates(img_bgr))
     except Exception as exc:
         logger.debug(f"Nail candidate reuse unavailable: {exc}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Hand-prioritized candidates (extractor-local; legacy reuse is the fallback)
+# ---------------------------------------------------------------------------
+
+
+def _detect_hands(img_bgr: np.ndarray) -> list[Any]:
+    """Run HandLandmarker (IMAGE mode); [] when unavailable or no hands."""
+    if not _HAND_LANDMARKER_READY or _hand_landmarker is None or _mediapipe is None:
+        return []
+    try:
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = _mediapipe.Image(
+            image_format=_mediapipe.ImageFormat.SRGB, data=img_rgb
+        )
+        result = _hand_landmarker.detect(mp_image)
+        return list(result.hand_landmarks or [])
+    except Exception as exc:
+        logger.debug(f"HandLandmarker detect failed: {exc}")
+        return []
+
+
+def _all_passing_components(
+    bin_mask: np.ndarray,
+    frame_total: int,
+    min_aspect: float,
+    max_aspect: float,
+) -> list[dict[str, Any]]:
+    """
+    All connected components of `bin_mask` passing plate priors
+    (size 0.5%-8% of frame, aspect gate, solidity > 0.7), largest-first.
+
+    Deterministic: area-descending (ties keep label order). Each entry is
+    a legacy-shaped candidate fragment with mask-local bbox/centre plus
+    float `_cx`/`_cy` centroid helpers.
+    """
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(bin_mask, 8)
+    order = sorted(
+        range(1, n), key=lambda i: int(stats[i, cv2.CC_STAT_AREA]), reverse=True
+    )
+    out: list[dict[str, Any]] = []
+    for i in order:
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < _PLATE_MIN_AREA_FRAC * frame_total:
+            continue
+        if area > _PLATE_MAX_AREA_FRAC * frame_total:
+            continue
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        yy = int(stats[i, cv2.CC_STAT_TOP])
+        bw = int(stats[i, cv2.CC_STAT_WIDTH])
+        bh = int(stats[i, cv2.CC_STAT_HEIGHT])
+        aspect = bw / (bh + 1e-6)
+        if aspect < min_aspect or aspect > max_aspect:
+            continue
+        comp = ((labels == i).astype(np.uint8)) * 255
+        cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            continue
+        best = max(cnts, key=cv2.contourArea)
+        hull_area = cv2.contourArea(cv2.convexHull(best))
+        solidity = float(cv2.contourArea(best) / (hull_area + 1e-6))
+        if solidity <= _PLATE_MIN_SOLIDITY:
+            continue
+        cx, cy = float(centroids[i][0]), float(centroids[i][1])
+        out.append({
+            "bbox": (x, yy, bw, bh),
+            "area": area,
+            "area_frac": round(area / max(1, frame_total), 5),
+            "aspect": round(aspect, 2),
+            "solidity": round(solidity, 2),
+            "center": (int(x + bw // 2), int(yy + bh // 2)),
+            "_cx": cx,
+            "_cy": cy,
+        })
+    return out
+
+
+def _clean_3x3(bin_mask: np.ndarray) -> np.ndarray:
+    """Morphological open then close with a 3x3 elliptical kernel."""
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    out = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN, k, iterations=1)
+    return cv2.morphologyEx(out, cv2.MORPH_CLOSE, k, iterations=1)
+
+
+def _crop_plate_masks(crop_bgr: np.ndarray) -> list[np.ndarray]:
+    """
+    Plate-likelihood binary masks for a search crop (OpenCV/numpy only):
+    low-saturation bright seed -> CLAHE-L + Otsu (bright) ->
+    CLAHE-L + adaptive-Gaussian (bright). Each cleaned open/close 3x3.
+    Deterministic.
+    """
+    masks: list[np.ndarray] = []
+    hsv = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2HSV)
+    seed = (
+        ((hsv[:, :, 1] < _SEED_MAX_SAT) & (hsv[:, :, 2] > _SEED_MIN_VAL))
+        .astype(np.uint8)
+        * 255
+    )
+    masks.append(_clean_3x3(seed))
+    lab = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2LAB)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    lum = clahe.apply(lab[:, :, 0])
+    _, otsu = cv2.threshold(lum, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    masks.append(_clean_3x3(otsu))
+    ch, cw = lum.shape[:2]
+    if min(ch, cw) >= 7:
+        blk = min(31, (min(ch, cw) // 2) * 2 + 1)
+        adap = cv2.adaptiveThreshold(
+            lum, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, int(blk), 3,
+        )
+        masks.append(_clean_3x3(adap))
+    return masks
+
+
+def _plate_near_tip(
+    crop_bgr: np.ndarray,
+    frame_total: int,
+    tip_local: tuple[float, float],
+    max_dist: float,
+) -> Optional[dict[str, Any]]:
+    """
+    Plate-likelihood segmentation inside a fingertip crop, anchored to the
+    fingertip: for the first mask yielding any passing component
+    (aspect 0.6-1.4 / solidity > 0.7 / size 0.5%-8% frame), keep components
+    whose centroid lies within `max_dist` of the tip and return the nearest
+    one (crop-local fragment) — shaft/palm blobs proximal to the tip are
+    ignored. Deterministic; None when nothing qualifies.
+    """
+    try:
+        tx, ty = tip_local
+        for mask in _crop_plate_masks(crop_bgr):
+            comps = _all_passing_components(
+                mask, frame_total, _PLATE_MIN_ASPECT, _PLATE_MAX_ASPECT
+            )
+            near = [
+                c for c in comps
+                if float(np.hypot(c["_cx"] - tx, c["_cy"] - ty)) <= max_dist
+            ]
+            if near:
+                near.sort(key=lambda c: float(np.hypot(c["_cx"] - tx, c["_cy"] - ty)))
+                return near[0]
+    except Exception as exc:
+        logger.debug(f"Plate segmentation in crop failed: {exc}")
+    return None
+
+
+def _nms_like_legacy(cands: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Legacy-style NMS (centre distance < max(min(w,h),30)); area-desc."""
+    ordered = sorted(
+        cands,
+        key=lambda c: (-int(c["area"]), int(c["bbox"][0]), int(c["bbox"][1])),
+    )
+    kept: list[dict[str, Any]] = []
+    for cand in ordered:
+        cx1, cy1 = cand["center"]
+        x1, y1, w1, h1 = cand["bbox"]
+        duplicate = False
+        for prev in kept:
+            cx2, cy2 = prev["center"]
+            if float(np.hypot(cx1 - cx2, cy1 - cy2)) < max(min(w1, h1), 30):
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(cand)
+    return kept
+
+
+def _strip_internal(cand: dict[str, Any]) -> dict[str, Any]:
+    """Drop underscore-prefixed helper keys; keep the legacy dict shape."""
+    return {k: v for k, v in cand.items() if not k.startswith("_")}
+
+
+def _candidates_from_hands(
+    img_bgr: np.ndarray, hands: list[Any]
+) -> list[dict[str, Any]]:
+    """
+    Per-finger search crops in the distal segment (DIP/IP -> TIP).
+
+    For each finger the crop is centred slightly proximal to the tip
+    (tip minus 0.35x the DIP-TIP length along the distal direction) with
+    half-size 1.25x that length (clamped), then segmented with
+    `_plate_near_tip` (nearest passing plate within 0.9x the DIP-TIP
+    length of the tip). Full-image coordinates; legacy dict shape.
+    """
+    h, w = img_bgr.shape[:2]
+    frame_total = h * w
+    out: list[dict[str, Any]] = []
+    for hand in hands:
+        try:
+            pts = [(float(lm.x) * w, float(lm.y) * h) for lm in hand]
+        except Exception:
+            continue
+        for tip_i, dip_i, _mcp_i in _FINGER_JOINTS:
+            if tip_i >= len(pts) or dip_i >= len(pts):
+                continue
+            tx, ty = pts[tip_i]
+            dx, dy = pts[dip_i]
+            vx, vy = tx - dx, ty - dy
+            seg_len = float(np.hypot(vx, vy))
+            if not np.isfinite(seg_len) or seg_len < 8.0:
+                continue
+            ux, uy = vx / seg_len, vy / seg_len
+            ccx, ccy = tx - ux * 0.35 * seg_len, ty - uy * 0.35 * seg_len
+            half = min(max(1.25 * seg_len, 20.0), 0.22 * max(w, h))
+            x0 = max(0, int(round(ccx - half)))
+            y0 = max(0, int(round(ccy - half)))
+            x1 = min(w, int(round(ccx + half)))
+            y1 = min(h, int(round(ccy + half)))
+            if x1 - x0 < 20 or y1 - y0 < 20:
+                continue
+            crop = img_bgr[y0:y1, x0:x1]
+            # Image-evidence gate: the fingertip must coincide with
+            # plate-like pixels, else this finger's landmarks are bogus.
+            try:
+                crop_hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                seed_frac = float(np.mean(
+                    (crop_hsv[:, :, 1] < _SEED_MAX_SAT)
+                    & (crop_hsv[:, :, 2] > _SEED_MIN_VAL)
+                ))
+            except Exception:
+                continue
+            if seed_frac < _FINGER_SEED_MIN_FRAC:
+                continue
+            hit = _plate_near_tip(
+                crop, frame_total,
+                (tx - x0, ty - y0), 0.9 * seg_len,
+            )
+            if hit is None:
+                continue
+            hx, hy, hbw, hbh = hit["bbox"]
+            if max(hbw, hbh) > _FINGER_MAX_PLATE_SCALE * seg_len:
+                continue
+            out.append({
+                "bbox": (x0 + hx, y0 + hy, hbw, hbh),
+                "area": int(hit["area"]),
+                "area_frac": round(int(hit["area"]) / max(1, frame_total), 5),
+                "aspect": hit["aspect"],
+                "solidity": hit["solidity"],
+                "center": (x0 + hx + hbw // 2, y0 + hy + hbh // 2),
+            })
+    return _nms_like_legacy(out)
+
+
+def _get_distal_plate_candidates(img_bgr: np.ndarray) -> list[dict[str, Any]]:
+    """
+    No-hand fallback for fist close-ups where the palm detector cannot
+    fire (only fingertips visible, no wrist/palm context).
+
+    Global low-saturation bright seed mask (open/close 3x3), then per
+    interior component: size 0.5%-8% frame, aspect 0.5-1.5, solidity > 0.7,
+    centre at/after 40% frame height, plus row-consistency (≥2 candidates
+    clustered within ±15% frame height of their median centre-y, so an
+    isolated knuckle/background highlight can never win on its own).
+    Empty list → caller falls back to the legacy validator reuse.
+    """
+    try:
+        h, w = img_bgr.shape[:2]
+        frame_total = h * w
+        hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+        seed = (
+            ((hsv[:, :, 1] < _SEED_MAX_SAT) & (hsv[:, :, 2] > _SEED_MIN_VAL))
+            .astype(np.uint8)
+            * 255
+        )
+        mask = _clean_3x3(seed)
+        n, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+        passing: list[dict[str, Any]] = []
+        for i in range(1, n):
+            area = int(stats[i, cv2.CC_STAT_AREA])
+            if area < _PLATE_MIN_AREA_FRAC * frame_total:
+                continue
+            if area > _PLATE_MAX_AREA_FRAC * frame_total:
+                continue
+            x = int(stats[i, cv2.CC_STAT_LEFT])
+            yy = int(stats[i, cv2.CC_STAT_TOP])
+            bw = int(stats[i, cv2.CC_STAT_WIDTH])
+            bh = int(stats[i, cv2.CC_STAT_HEIGHT])
+            if x <= 1 or yy <= 1 or x + bw >= w - 1 or yy + bh >= h - 1:
+                continue  # border-touching: background, never a plate
+            aspect = bw / (bh + 1e-6)
+            if aspect < _DISTAL_MIN_ASPECT or aspect > _DISTAL_MAX_ASPECT:
+                continue
+            comp = ((labels == i).astype(np.uint8)) * 255
+            cnts, _ = cv2.findContours(
+                comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            if not cnts:
+                continue
+            best = max(cnts, key=cv2.contourArea)
+            hull_area = cv2.contourArea(cv2.convexHull(best))
+            solidity = float(cv2.contourArea(best) / (hull_area + 1e-6))
+            if solidity <= _PLATE_MIN_SOLIDITY:
+                continue
+            cx, cy = float(centroids[i][0]), float(centroids[i][1])
+            if cy < _DISTAL_MIN_CY_FRAC * h:
+                continue
+            passing.append({
+                "bbox": (x, yy, bw, bh),
+                "area": area,
+                "area_frac": round(area / max(1, frame_total), 5),
+                "aspect": round(aspect, 2),
+                "solidity": round(solidity, 2),
+                "center": (int(x + bw // 2), int(yy + bh // 2)),
+                "_cy": cy,
+            })
+        if len(passing) < 2:
+            return []
+        cys = sorted(p["_cy"] for p in passing)
+        median_cy = cys[len(cys) // 2]
+        row = [
+            p for p in passing
+            if abs(p["_cy"] - median_cy) <= _DISTAL_ROW_BAND_FRAC * h
+        ]
+        if len(row) < 2:
+            return []
+        return [_strip_internal(c) for c in _nms_like_legacy(row)]
+    except Exception as exc:
+        logger.debug(f"Distal plate fallback failed: {exc}")
+        return []
+
+
+def _get_hand_prioritized_candidates(img_bgr: np.ndarray) -> list[dict[str, Any]]:
+    """
+    Extractor-local hand-prioritized nail candidates (legacy dict shape).
+
+    1. MediaPipe HandLandmarker (IMAGE mode) fingertip-anchored crops.
+    2. Distal-plate fallback for fist close-ups (no hand detected).
+    3. [] → `extract_nail_features` falls back to legacy
+       `_get_nail_candidates` validator reuse. Deterministic; never raises.
+    """
+    try:
+        if img_bgr is None or getattr(img_bgr, "size", 0) == 0:
+            return []
+        hands = _detect_hands(img_bgr)
+        if hands:
+            hand_cands = _candidates_from_hands(img_bgr, hands)
+            if hand_cands:
+                logger.debug(f"Hand-prioritized candidates: {len(hand_cands)} "
+                             f"from {len(hands)} hand(s).")
+                return hand_cands
+            logger.debug("Hands detected but no plates segmented in "
+                         "fingertip crops; trying distal-plate fallback.")
+        distal = _get_distal_plate_candidates(img_bgr)
+        if distal:
+            logger.debug(f"Distal-plate candidates: {len(distal)}.")
+            return distal
+        return []
+    except Exception as exc:
+        logger.debug(f"Hand-prioritized candidates unavailable: {exc}")
         return []
 
 
@@ -559,8 +1030,13 @@ def extract_nail_features(
     h, w = img_bgr.shape[:2]
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    # ---- Step 1: candidate geometry from the validated detector.
-    candidates = _get_nail_candidates(img_bgr)
+    # ---- Step 1: hand-prioritized candidates first (extractor-local
+    # MediaPipe Hands fingertip crops + distal-plate fallback for fist
+    # close-ups); legacy validator Top-Hat reuse as the last resort so
+    # behaviour can never regress to zero candidates.
+    candidates = _get_hand_prioritized_candidates(img_bgr)
+    if not candidates:
+        candidates = _get_nail_candidates(img_bgr)
     n_detected = len(candidates)
     if n_detected == 0:
         # Blank marked image (original preserved underneath) for visibility.
