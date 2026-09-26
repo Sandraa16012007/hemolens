@@ -56,6 +56,12 @@ const DEMO_RESULT: ParsedReportResult = {
   },
 };
 
+const EMPTY_RESULT: ParsedReportResult = {
+  ml_prediction: null,
+  clinical_classification: null,
+  narrative_report: null,
+};
+
 function ScreeningReportContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,8 +71,13 @@ function ScreeningReportContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [screening, setScreening] = useState<Screening | null>(null);
   const [report, setReport] = useState<Report | null>(null);
-  const [parsedResult, setParsedResult] = useState<ParsedReportResult>(DEMO_RESULT);
-  const [isLoading, setIsLoading] = useState(true);
+  // Demo preview when no screeningId in URL; empty/pending otherwise (no demo leak).
+  const [parsedResult, setParsedResult] = useState<ParsedReportResult>(() =>
+    searchParams.get("screeningId") ? EMPTY_RESULT : DEMO_RESULT
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => Boolean(searchParams.get("screeningId"))
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const hasScreeningId = Boolean(screeningId);
@@ -74,8 +85,7 @@ function ScreeningReportContent() {
 
   useEffect(() => {
     if (!screeningId) {
-      // No screeningId in URL — show the page with static/demo data
-      setIsLoading(false);
+      // No screeningId in URL — static/demo data already set via lazy init.
       return;
     }
 
