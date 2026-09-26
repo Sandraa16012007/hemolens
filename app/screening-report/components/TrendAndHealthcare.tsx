@@ -119,7 +119,7 @@ export default function TrendAndHealthcare({
   const itemsWithHb = mergedItems.filter((i) => i.hbEstimate !== null);
   const { points, refY } = itemsWithHb.length > 0
     ? buildChartPoints(itemsWithHb)
-    : { points: [], refY: 0, minHb: 0, maxHb: 0 };
+    : { points: [], refY: 0 };
 
   // Slope calculation
   const sortedForSlope = [...itemsWithHb].sort(
