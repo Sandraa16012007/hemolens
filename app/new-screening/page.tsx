@@ -326,20 +326,20 @@ export default function NewScreeningPage() {
         onProgress: (p) => setAnalysisStage(p.stage),
       });
 
-      // If backend returned base64 ROI markup, update the screening record in Supabase in background
-      if (createdScreeningId && result.roi_marked_image_base64) {
+      // If backend returned ROI markup, upload it to the storage bucket and
+      // save the public URL + path on the screening row (non-fatal).
+      if (result.roi_marked_image_base64) {
         try {
-          const { createClient } = await import("@/lib/supabase/client");
-          const supabase = createClient();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from("screenings") as any)
-            .update({
-              eyelid_roi_image_url: result.roi_marked_image_base64,
-              status: "completed",
-            })
-            .eq("id", createdScreeningId);
+          const { uploadRoiImageAndUpdateScreening } = await import(
+            "@/lib/supabase/screenings"
+          );
+          await uploadRoiImageAndUpdateScreening({
+            screeningId: result.screening_id,
+            kind: "eyelid",
+            base64: result.roi_marked_image_base64,
+          });
         } catch {
-          // non-fatal
+          // non-fatal — sessionStorage cache below still feeds the report
         }
       }
 
@@ -363,19 +363,17 @@ export default function NewScreeningPage() {
 
           if (nailResult.success && nailResult.roi_marked_image_base64) {
             const nailRoiBase64 = nailResult.roi_marked_image_base64;
-            if (createdScreeningId) {
-              try {
-                const { createClient } = await import("@/lib/supabase/client");
-                const supabase = createClient();
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (supabase.from("screenings") as any)
-                  .update({
-                    nailbed_roi_image_url: nailRoiBase64,
-                  })
-                  .eq("id", createdScreeningId);
-              } catch {
-                // non-fatal
-              }
+            try {
+              const { uploadRoiImageAndUpdateScreening } = await import(
+                "@/lib/supabase/screenings"
+              );
+              await uploadRoiImageAndUpdateScreening({
+                screeningId: result.screening_id,
+                kind: "nailbed",
+                base64: nailRoiBase64,
+              });
+            } catch {
+              // non-fatal — sessionStorage cache below still feeds the report
             }
             if (typeof window !== "undefined") {
               try {
