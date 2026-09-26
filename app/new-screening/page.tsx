@@ -19,11 +19,13 @@ import {
 import { createScreeningWithImages } from "@/lib/supabase/screenings";
 import { extractNailFeatures } from "@/lib/api/nailFeatures";
 import { useSidebar } from "../context/SidebarContext";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function NewScreeningPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isCollapsed } = useSidebar();
+  const { language, t } = useLanguage();
 
   // Form & Image State — Starts empty: asks user to upload first
   const [eyelidImage, setEyelidImage] = useState<SelectedImageData | null>(null);
@@ -283,10 +285,10 @@ export default function NewScreeningPage() {
           },
           nailBedImage: nailBedImage
             ? {
-                file: nailBedImage.file,
-                previewUrl: nailBedImage.previewUrl,
-                name: nailBedImage.name,
-              }
+              file: nailBedImage.file,
+              previewUrl: nailBedImage.previewUrl,
+              name: nailBedImage.name,
+            }
             : null,
           symptoms: {
             selected: selectedSymptoms,
@@ -321,6 +323,7 @@ export default function NewScreeningPage() {
           selected: selectedSymptoms,
           other: otherSymptoms.trim() || undefined,
         },
+        language,
         // Image already passed frontend validation — skip redundant backend re-check
         skipValidation: true,
         onProgress: (p) => setAnalysisStage(p.stage),
@@ -438,17 +441,16 @@ export default function NewScreeningPage() {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-          isCollapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isCollapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Top Header with Breadcrumb */}
         <DashboardHeader
           onMenuClick={() => setSidebarOpen(true)}
           breadcrumb={{
-            backLabel: "Back to Dashboard",
+            backLabel: t("header.backToDashboard", "Back to Dashboard"),
             backHref: "/dashboard",
-            title: "New Screening",
+            title: t("nav.newScreening", "New Screening"),
           }}
         />
 
@@ -477,10 +479,10 @@ export default function NewScreeningPage() {
           {/* Header Title Section */}
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-heading tracking-tight mb-1">
-              Let&apos;s check your current anemia risk
+              {t("screening.title", "Let's check your current anemia risk")}
             </h1>
             <p className="text-xs sm:text-sm text-muted">
-              Follow the steps below. Your lower-eyelid image is verified for quality before running the screening model.
+              {t("screening.subtitle", "Follow the steps below. Your lower-eyelid image is verified for quality before running the screening model.")}
             </p>
           </div>
 

@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 import { SidebarProvider } from "./context/SidebarContext";
+import { LanguageProvider } from "./context/LanguageContext";
 
 export default function RootLayout({
   children,
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <SidebarProvider>{children}</SidebarProvider>
+        <LanguageProvider>
+          <SidebarProvider>{children}</SidebarProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

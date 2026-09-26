@@ -4,7 +4,9 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Globe, ChevronDown, User, Menu, ArrowLeft } from "lucide-react";
+import { User, Menu, ArrowLeft } from "lucide-react";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useLanguage } from "../context/LanguageContext";
 
 interface DashboardHeaderProps {
   onMenuClick?: () => void;
@@ -21,6 +23,7 @@ export default function DashboardHeader({
 }: DashboardHeaderProps) {
   const [langOpen, setLangOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState("English");
+  const { t } = useLanguage();
 
   const languages = ["English", "Hindi", "Bengali", "Malayalam"];
 
@@ -60,11 +63,27 @@ export default function DashboardHeader({
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-heading transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>{breadcrumb.backLabel}</span>
+                <span>
+                  {breadcrumb.backLabel === "Dashboard"
+                    ? t("nav.dashboard", "Dashboard")
+                    : breadcrumb.backLabel === "Screening History"
+                      ? t("nav.screeningHistory", "Screening History")
+                      : breadcrumb.backLabel}
+                </span>
               </Link>
               <div className="h-4 w-px bg-border" />
               <span className="text-sm font-bold text-heading">
-                {breadcrumb.title}
+                {breadcrumb.title === "Dashboard"
+                  ? t("nav.dashboard", "Dashboard")
+                  : breadcrumb.title === "New Screening"
+                    ? t("nav.newScreening", "New Screening")
+                    : breadcrumb.title === "Screening History"
+                      ? t("nav.screeningHistory", "Screening History")
+                      : breadcrumb.title === "AI Assistant"
+                        ? t("nav.aiAssistant", "AI Assistant")
+                        : breadcrumb.title === "Profile"
+                          ? t("nav.profile", "Profile")
+                          : breadcrumb.title}
               </span>
             </div>
           )}
@@ -72,51 +91,8 @@ export default function DashboardHeader({
 
         {/* Right side: Language Selector + User Avatar */}
         <div className="flex items-center gap-3 sm:gap-4 ml-auto">
-          {/* Language Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setLangOpen(!langOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-heading hover:bg-surface transition-colors"
-            >
-              <Globe className="w-3.5 h-3.5 text-muted" />
-              <span>Language: {selectedLang}</span>
-              <ChevronDown
-                className={`w-3 h-3 text-muted transition-transform ${
-                  langOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            <AnimatePresence>
-              {langOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="absolute right-0 mt-1 w-36 bg-white border border-border rounded-lg shadow-lg py-1 z-50"
-                >
-                  {languages.map((lang) => (
-                    <button
-                      key={lang}
-                      type="button"
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        selectedLang === lang
-                          ? "bg-accent/20 text-accent-dark font-semibold"
-                          : "text-heading hover:bg-surface"
-                      }`}
-                      onClick={() => {
-                        setSelectedLang(lang);
-                        setLangOpen(false);
-                      }}
-                    >
-                      {lang}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          {/* Language Switcher */}
+          <LanguageSwitcher />
 
           {/* User Profile Avatar */}
           <Link

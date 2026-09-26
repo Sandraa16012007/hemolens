@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, TrendingDown, Minus, Phone, Check, Loader2 } from "lucide-react";
 import { getUserScreeningHistory, type ScreeningHistoryItem } from "@/lib/supabase/screenings";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 // Chart constants
 const CHART_W = 340;
@@ -25,13 +26,11 @@ interface ChartPoint {
 }
 
 function hbToY(hb: number, minHb: number, maxHb: number): number {
-  // Map hb value to SVG y coordinate (higher hb = lower y number = higher on chart)
   const range = maxHb - minHb || 2;
   return PAD_T + PLOT_H - ((hb - minHb) / range) * PLOT_H;
 }
 
 function buildChartPoints(items: ScreeningHistoryItem[]): ChartPoint[] {
-  // Items sorted ascending for chart (earliest → latest)
   const sorted = [...items]
     .filter((i) => i.hbEstimate !== null)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -54,11 +53,11 @@ function buildChartPoints(items: ScreeningHistoryItem[]): ChartPoint[] {
   });
 }
 
-
 export default function TrendAndClinicalHelp() {
   const [contactedLab, setContactedLab] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState<ScreeningHistoryItem[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
+  const { language, t } = useLanguage();
 
   const labs = [
     {
@@ -92,7 +91,6 @@ export default function TrendAndClinicalHelp() {
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
-  // Slope: change in Hb per month
   let slopeText: string | null = null;
   let slopePositive = false;
   if (sorted.length >= 2) {
@@ -125,7 +123,7 @@ export default function TrendAndClinicalHelp() {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            Estimated Hb Trend
+            {t("history.trendTitle", "Estimated Hb Trend")}
           </h2>
           <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
             {slopePositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4 text-primary" />}
@@ -143,7 +141,7 @@ export default function TrendAndClinicalHelp() {
             <div className="flex flex-col items-center justify-center h-44 gap-2 text-center">
               <Minus className="w-5 h-5 text-muted" />
               <p className="text-xs text-muted max-w-[200px]">
-                No historical screenings recorded yet. Complete a screening to begin tracking your Hb trend.
+                {t("history.noRecords", "No screening records found.")}
               </p>
             </div>
           ) : (
@@ -232,10 +230,14 @@ export default function TrendAndClinicalHelp() {
               {slopePositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
             </div>
             <p className="text-xs text-muted leading-relaxed">
-              <strong className="text-heading font-semibold">Trend:</strong>{" "}
+              <strong className="text-heading font-semibold">{t("history.trendLabel", "Trend:")}</strong>{" "}
               {slopePositive
-                ? `Your Hb estimate is trending upward (${slopeText}). Keep up your dietary habits.`
-                : `Your latest estimate is lower than your first screening (${slopeText}). A routine blood test can confirm your iron levels.`}
+                ? (language === "hi"
+                  ? `आपका हीमोग्लोबिन अनुमान ऊपर की ओर बढ़ रहा है (${slopeText})। अपनी आहार संबंधी आदतों को बनाए रखें।`
+                  : `Your Hb estimate is trending upward (${slopeText}). Keep up your dietary habits.`)
+                : (language === "hi"
+                  ? `आपका नवीनतम अनुमान आपकी पहली जांच से कम है (${slopeText})। एक नियमित रक्त परीक्षण आपके आयरन के स्तर की पुष्टि कर सकता है।`
+                  : `Your latest estimate is lower than your first screening (${slopeText}). A routine blood test can confirm your iron levels.`)}
             </p>
           </div>
         )}
@@ -245,8 +247,12 @@ export default function TrendAndClinicalHelp() {
               <TrendingUp className="w-3.5 h-3.5" />
             </div>
             <p className="text-xs text-muted leading-relaxed">
-              <strong className="text-heading font-semibold">Baseline recorded.</strong>{" "}
-              Complete more screenings over time to see how your Hb estimate trends.
+              <strong className="text-heading font-semibold">
+                {language === "hi" ? "आधार रेखा दर्ज की गई।" : "Baseline recorded."}
+              </strong>{" "}
+              {language === "hi"
+                ? "समय के साथ अपना हीमोग्लोबिन रुझान देखने के लिए और जांचें पूरी करें।"
+                : "Complete more screenings over time to see how your Hb estimate trends."}
             </p>
           </div>
         )}
@@ -261,12 +267,11 @@ export default function TrendAndClinicalHelp() {
       >
         <div className="flex items-center gap-2 mb-1.5">
           <h2 className="text-base sm:text-lg font-bold text-heading">
-            Need Clinical Help?
+            {t("history.clinicalHelpTitle", "Need Clinical Help?")}
           </h2>
         </div>
         <p className="text-xs text-muted leading-relaxed mb-4">
-          Quickly share this trend record with certified local medical
-          laboratories or request formal phlebotomy services.
+          {t("history.clinicalHelpDesc", "Quickly share this trend record with certified local medical laboratories or request formal phlebotomy services.")}
         </p>
 
         {/* Toast Alert when contacted */}
@@ -304,7 +309,7 @@ export default function TrendAndClinicalHelp() {
                 className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-surface-alt border border-border text-xs font-semibold text-heading transition-colors shadow-2xs hover:border-border/90 active:scale-95"
               >
                 <Phone className="w-3 h-3 text-muted" />
-                <span>Contact</span>
+                <span>{t("history.contactBtn", "Contact")}</span>
               </button>
             </div>
           ))}

@@ -8,6 +8,7 @@ import {
   getUserScreeningHistory,
   type ScreeningHistoryItem,
 } from "@/lib/supabase/screenings";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 function formatLocalTime(isoDate: string): string {
   try {
@@ -94,6 +95,7 @@ function getBadgeClasses(riskLevel: ScreeningHistoryItem["riskLevel"]): {
 export default function LatestScreening() {
   const [item, setItem] = useState<ScreeningHistoryItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useLanguage();
 
   useEffect(() => {
     let mounted = true;
@@ -115,12 +117,21 @@ export default function LatestScreening() {
     };
   }, []);
 
+  const getLocalizedRiskLabel = (riskLevel: ScreeningHistoryItem["riskLevel"]) => {
+    const s = String(riskLevel).toLowerCase();
+    if (s.includes("low")) return t("dashboard.lowRisk", "Low Risk");
+    if (s.includes("mild")) return t("dashboard.lowRisk", "Low Risk");
+    if (s.includes("moderate")) return t("dashboard.moderate", "Moderate");
+    if (s.includes("high") || s.includes("severe")) return t("dashboard.high", "High");
+    return riskLevel;
+  };
+
   return (
     <div className="space-y-3" id="latest-screening-section">
       {/* Section Title */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg sm:text-xl font-bold text-heading">
-          Latest screening
+          {t("dashboard.latestScreening", "Latest screening")}
         </h2>
       </div>
 
@@ -149,10 +160,10 @@ export default function LatestScreening() {
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
             <div className="space-y-2 flex-1">
               <p className="text-sm sm:text-base font-semibold text-heading">
-                No screenings yet
+                {t("history.noRecords", "No screening records found.")}
               </p>
               <p className="text-xs sm:text-sm text-muted">
-                Run your first anemia screening to see your latest result here.
+                {t("dashboard.noScreenings", "No screening history yet. Start your first non-invasive screening today.")}
               </p>
             </div>
             <div className="shrink-0 flex items-center">
@@ -160,7 +171,7 @@ export default function LatestScreening() {
                 href="/new-screening"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
               >
-                <span>Start Screening</span>
+                <span>{t("dashboard.startNewScreening", "Start New Screening")}</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -215,13 +226,13 @@ export default function LatestScreening() {
                   {/* Timestamp */}
                   <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted uppercase">
                     <Calendar className="w-3.5 h-3.5" />
-                    <span>Last Screening</span>
+                    <span>{t("dashboard.lastScreening", "LAST SCREENING")}</span>
                     <span className="text-heading font-medium">{item.formattedDate}</span>
                     {localTime ? (
                       <>
                         <span className="w-1 h-1 rounded-full bg-border" />
                         <span className="normal-case font-normal text-muted">
-                          {localTime} Local Time
+                          {localTime}
                         </span>
                       </>
                     ) : null}
@@ -230,7 +241,7 @@ export default function LatestScreening() {
                   {/* Estimated Hb & Badge */}
                   <div className="flex flex-wrap items-baseline gap-3">
                     <span className="text-xs sm:text-sm font-medium text-muted">
-                      Estimated Hb:
+                      {t("dashboard.estimatedHbPrefix", "Estimated Hb:")}
                     </span>
                     <span className="text-2xl sm:text-3xl font-extrabold text-heading tracking-tight">
                       {hbDisplay}
@@ -239,7 +250,7 @@ export default function LatestScreening() {
 
                     <span className={badge.container}>
                       <span className={badge.dot} />
-                      {item.riskLevel}
+                      {getLocalizedRiskLabel(item.riskLevel)}
                     </span>
                   </div>
 
@@ -248,7 +259,7 @@ export default function LatestScreening() {
                     {/* Range labels */}
                     <div className="flex justify-between text-[11px] font-medium text-muted">
                       <span className={activeIndex === 0 ? "text-emerald-700 font-bold" : "text-muted/80"}>
-                        Low Risk (&gt;12.0)
+                        {t("dashboard.lowRisk", "Low Risk")} (&gt;12.0)
                       </span>
                       <span
                         className={
@@ -259,10 +270,10 @@ export default function LatestScreening() {
                             : "text-muted/80"
                         }
                       >
-                        Moderate (10.0–11.9)
+                        {t("dashboard.moderate", "Moderate")} (10.0–11.9)
                       </span>
                       <span className={activeIndex === 2 ? "text-red-700 font-bold" : "text-muted/80"}>
-                        High (&lt;10.0)
+                        {t("dashboard.high", "High")} (&lt;10.0)
                       </span>
                     </div>
 
@@ -303,7 +314,7 @@ export default function LatestScreening() {
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-border text-xs sm:text-sm font-semibold text-heading hover:bg-accent/20 hover:text-accent-dark hover:border-accent/40 active:scale-[0.98] transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                     id="btn-view-report-latest"
                   >
-                    <span>View Report</span>
+                    <span>{t("dashboard.viewReport", "View Report")}</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>

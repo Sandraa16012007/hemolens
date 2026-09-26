@@ -6,6 +6,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { MLPrediction, ClinicalClassification } from "@/lib/supabase/reportResult";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface TopMetricsGridProps {
   eyelidImageUrl?: string | null;
@@ -53,17 +54,18 @@ export default function TopMetricsGrid({
   mlPrediction,
   clinicalClassification,
 }: TopMetricsGridProps) {
+  const { language, t } = useLanguage();
   const isPending = reportStatus === "pending" || reportStatus === "processing";
   const riskCategory = clinicalClassification?.risk_category ?? "unclassifiable";
   const riskStyle = RISK_STYLES[riskCategory] ?? RISK_STYLES.unclassifiable;
 
   // ─── Next Action Guidance by Risk Tier ───────────────────────────────────────
   const NEXT_STEPS_BY_RISK: Record<string, string> = {
-    normal: "Next Step: Maintain an iron-rich diet and continue routine wellness monitoring.",
-    mild: "Next Step: Schedule a physician consultation and get a confirmatory CBC lab test.",
-    moderate: "Next Step: Consult a doctor promptly for a confirmatory CBC test and clinical evaluation.",
-    severe: "Next Step: Seek urgent medical attention and confirmatory diagnostic testing.",
-    unclassifiable: "Next Step: Complete your health profile and consult a doctor for a CBC test.",
+    normal: language === "hi" ? "अगला कदम: आयरन युक्त आहार बनाए रखें और नियमित स्वास्थ्य निगरानी जारी रखें।" : "Next Step: Maintain an iron-rich diet and continue routine wellness monitoring.",
+    mild: language === "hi" ? "अगला कदम: डॉक्टर के साथ परामर्श का समय तय करें और पुष्टि सीबीसी लैब परीक्षण करवाएं।" : "Next Step: Schedule a physician consultation and get a confirmatory CBC lab test.",
+    moderate: language === "hi" ? "अगला कदम: पुष्टि सीबीसी परीक्षण और नैदानिक मूल्यांकन के लिए तुरंत डॉक्टर से परामर्श करें।" : "Next Step: Consult a doctor promptly for a confirmatory CBC test and clinical evaluation.",
+    severe: language === "hi" ? "अगला कदम: तत्काल चिकित्सा सहायता और पुष्टि नैदानिक परीक्षण की तलाश करें।" : "Next Step: Seek urgent medical attention and confirmatory diagnostic testing.",
+    unclassifiable: language === "hi" ? "अगला कदम: अपना स्वास्थ्य प्रोफ़ाइल पूरा करें और सीबीसी परीक्षण के लिए डॉक्टर से परामर्श लें।" : "Next Step: Complete your health profile and consult a doctor for a CBC test.",
   };
 
   const nextStepLine = NEXT_STEPS_BY_RISK[riskCategory] ?? NEXT_STEPS_BY_RISK.unclassifiable;
@@ -80,7 +82,7 @@ export default function TopMetricsGrid({
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold tracking-wider uppercase text-muted">
-              Estimated Hb Level
+              {t("report.estimatedHb", "Estimated Hb Level")}
             </span>
             <div className="w-7 h-7 rounded-lg bg-accent/30 text-accent-dark flex items-center justify-center">
               <Droplet className="w-3.5 h-3.5" />
@@ -90,7 +92,7 @@ export default function TopMetricsGrid({
           {isPending || !mlPrediction || typeof mlPrediction.hb_estimate !== "number" || Number.isNaN(mlPrediction.hb_estimate) ? (
             <div className="flex items-baseline gap-1.5 mb-2">
               <span className="text-2xl font-extrabold text-muted tracking-tight">
-                {isPending ? "Awaiting analysis" : "—"}
+                {isPending ? (language === "hi" ? "विश्लेषण की प्रतीक्षा में" : "Awaiting analysis") : "—"}
               </span>
             </div>
           ) : (
@@ -103,7 +105,7 @@ export default function TopMetricsGrid({
               </div>
               {Array.isArray(mlPrediction.hb_range) && mlPrediction.hb_range.length >= 2 && (
                 <div className="text-xs font-semibold text-accent-dark mt-0.5">
-                  Estimated Range: {(mlPrediction.hb_range[0] ?? 0).toFixed(1)}–{(mlPrediction.hb_range[1] ?? 0).toFixed(1)} g/dL
+                  {language === "hi" ? "अनुमानित सीमा:" : "Estimated Range:"} {(mlPrediction.hb_range[0] ?? 0).toFixed(1)}–{(mlPrediction.hb_range[1] ?? 0).toFixed(1)} g/dL
                 </div>
               )}
             </div>
@@ -111,25 +113,25 @@ export default function TopMetricsGrid({
 
           <p className="text-xs text-muted leading-relaxed mb-4">
             {isPending
-              ? "Your images have been uploaded and are queued for AI analysis."
-              : "Estimated from palpebral conjunctiva optical density analysis."}
+              ? (language === "hi" ? "आपकी तस्वीरें अपलोड कर दी गई हैं और एआई विश्लेषण के लिए कतार में हैं।" : "Your images have been uploaded and are queued for AI analysis.")
+              : (language === "hi" ? "निचली पलक के कंजंक्टिवा ऑप्टिकल घनत्व विश्लेषण से अनुमानित।" : "Estimated from palpebral conjunctiva optical density analysis.")}
           </p>
         </div>
 
         {!isPending && mlPrediction && (
           <div className="pt-3 border-t border-border/70 space-y-1.5 text-xs">
             <div className="flex justify-between items-center text-muted">
-              <span>Patient reading</span>
+              <span>{language === "hi" ? "मरीज़ की रीडिंग" : "Patient reading"}</span>
               <span className="font-semibold text-heading">
                 {typeof mlPrediction.hb_estimate === "number" ? mlPrediction.hb_estimate.toFixed(1) : "—"} g/dL
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-muted">
-                Reference: {clinicalClassification?.applicable_population ?? "Adult"}
+                {language === "hi" ? "संदर्भ:" : "Reference:"} {clinicalClassification?.applicable_population ?? (language === "hi" ? "वयस्क" : "Adult")}
               </span>
               <span className="text-primary font-bold">
-                {riskCategory.toUpperCase()}
+                {t(`risk.${riskCategory}`, riskCategory.toUpperCase())}
               </span>
             </div>
           </div>
@@ -146,7 +148,7 @@ export default function TopMetricsGrid({
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-bold tracking-wider uppercase text-muted">
-              Anemia Risk
+              {t("report.anemiaRisk", "Anemia Risk")}
             </span>
             <div className="w-7 h-7 rounded-lg bg-rose-50 text-primary flex items-center justify-center">
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -156,13 +158,13 @@ export default function TopMetricsGrid({
           <div className="mb-2">
             {isPending || !clinicalClassification ? (
               <span className="inline-block px-3.5 py-1 rounded-lg bg-surface border border-border text-muted font-bold text-sm tracking-wider">
-                {isPending ? "PENDING" : "—"}
+                {isPending ? (language === "hi" ? "लंबित" : "PENDING") : "—"}
               </span>
             ) : (
               <span
                 className={`inline-block px-3.5 py-1 rounded-lg font-black text-sm sm:text-base tracking-wider border ${riskStyle.badge}`}
               >
-                {riskCategory.toUpperCase()}
+                {t(`risk.${riskCategory}`, riskCategory.toUpperCase())}
               </span>
             )}
           </div>
@@ -182,9 +184,8 @@ export default function TopMetricsGrid({
                 return (
                   <div
                     key={level}
-                    className={`py-1.5 rounded-lg capitalize ${
-                      isActive ? riskStyle.highlight : "text-muted"
-                    }`}
+                    className={`py-1.5 rounded-lg capitalize ${isActive ? riskStyle.highlight : "text-muted"
+                      }`}
                   >
                     {level}
                   </div>

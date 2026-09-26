@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, X, Send, ArrowRight } from "lucide-react";
+import { Mic, X, ArrowRight } from "lucide-react";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface ChatInputBarProps {
   input: string;
@@ -18,6 +19,7 @@ export default function ChatInputBar({
   disabled,
 }: ChatInputBarProps) {
   const [isListening, setIsListening] = useState(false);
+  const { t } = useLanguage();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +32,7 @@ export default function ChatInputBar({
   const handleMicToggle = () => {
     setIsListening(!isListening);
     if (!isListening) {
-      onInputChange("How can I boost my dietary iron naturally?");
+      onInputChange(t("assistant.prompt1", "What foods are highest in iron for vegetarians?"));
     }
   };
 
@@ -43,7 +45,7 @@ export default function ChatInputBar({
       {/* Text input */}
       <input
         type="text"
-        placeholder="Ask a question about your health, foods, or symptoms..."
+        placeholder={t("assistant.inputPlaceholder", "Ask a question about anemia, symptoms, or nutrition...")}
         value={input}
         onChange={(e) => onInputChange(e.target.value)}
         disabled={disabled}
@@ -67,8 +69,8 @@ export default function ChatInputBar({
         type="button"
         onClick={handleMicToggle}
         className={`p-2 rounded-xl transition-all ${isListening
-            ? "bg-rose-100 text-primary animate-pulse ring-2 ring-primary/30"
-            : "text-muted hover:text-heading hover:bg-surface"
+          ? "bg-rose-100 text-primary animate-pulse ring-2 ring-primary/30"
+          : "text-muted hover:text-heading hover:bg-surface"
           }`}
         title={isListening ? "Listening..." : "Voice input"}
       >
@@ -84,7 +86,7 @@ export default function ChatInputBar({
         className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-accent-dark text-white text-xs sm:text-sm font-semibold hover:bg-accent-dark/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-xs cursor-pointer"
         id="send-chat-button"
       >
-        <span>Send</span>
+        <span>{t("assistant.send", "Send")}</span>
         <ArrowRight className="w-3.5 h-3.5" />
       </motion.button>
     </form>

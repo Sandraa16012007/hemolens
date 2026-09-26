@@ -16,6 +16,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { NarrativeReport } from "@/lib/supabase/reportResult";
+import { useLanguage } from "@/app/context/LanguageContext";
+import { translateReportText } from "@/lib/utils/translateReport";
 
 interface ClinicalInsightsProps {
   narrativeReport?: NarrativeReport | null;
@@ -38,6 +40,8 @@ const DEFAULT_DISCLAIMER =
   "Do not use this preliminary screening result as a medical diagnosis or alter medications autonomously.";
 
 export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsProps) {
+  const { language, t } = useLanguage();
+
   const recommendations =
     narrativeReport?.recommendations?.length
       ? narrativeReport.recommendations
@@ -58,11 +62,11 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="w-4 h-4 text-accent-dark" />
             <span className="text-xs font-bold tracking-wider uppercase text-accent-dark">
-              AI Summary
+              {t("report.summary", "AI Summary")}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-heading leading-relaxed">
-            {narrativeReport.summary}
+            {translateReportText(narrativeReport.summary, language)}
           </p>
         </motion.div>
       )}
@@ -80,7 +84,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-accent-dark" />
             <h2 className="text-sm sm:text-base font-bold text-heading">
-              Factors considered
+              {t("report.factorsConsidered", "Factors considered")}
             </h2>
           </div>
           <span className="text-[11px] font-semibold text-muted bg-surface border border-border px-2.5 py-0.5 rounded-md">
@@ -99,7 +103,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border text-xs font-medium text-heading"
               >
                 <Sparkles className="w-3.5 h-3.5 text-accent-dark" />
-                <span>{factor}</span>
+                <span>{translateReportText(factor, language)}</span>
               </div>
             ))
           ) : (
@@ -111,7 +115,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border text-xs font-medium text-heading"
                 >
                   <Icon className="w-3.5 h-3.5 text-accent-dark" />
-                  <span>{factor.label}</span>
+                  <span>{translateReportText(factor.label, language)}</span>
                 </div>
               );
             })
@@ -129,7 +133,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
         <div className="flex items-center gap-2">
           <ListChecks className="w-4 h-4 text-accent-dark" />
           <h2 className="text-sm sm:text-base font-bold text-heading">
-            What should I do next?
+            {t("report.recommendations", "What should I do next?")}
           </h2>
         </div>
 
@@ -143,7 +147,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
               <div className="w-4 h-4 rounded-full bg-accent-dark/15 text-accent-dark flex items-center justify-center shrink-0 mt-0.5">
                 <Check className="w-3 h-3 stroke-[2.5]" />
               </div>
-              <p className="text-xs text-heading leading-relaxed">{rec}</p>
+              <p className="text-xs text-heading leading-relaxed">{translateReportText(rec, language)}</p>
             </div>
           ))}
 
@@ -152,7 +156,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
             <div className="w-4 h-4 rounded-full bg-rose-100 text-primary flex items-center justify-center shrink-0 mt-0.5">
               <AlertCircle className="w-3 h-3 stroke-[2.5]" />
             </div>
-            <p className="text-xs text-rose-950 leading-relaxed">{disclaimer}</p>
+            <p className="text-xs text-rose-950 leading-relaxed">{translateReportText(disclaimer, language)}</p>
           </div>
         </div>
 

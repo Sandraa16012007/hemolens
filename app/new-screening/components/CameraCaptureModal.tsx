@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Sparkles,
 } from "lucide-react";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export default function CameraCaptureModal({
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const { t } = useLanguage();
 
   const isEyelid = type === "eyelid";
 
@@ -123,7 +125,6 @@ export default function CameraCaptureModal({
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
-      // Mirror snapshot to match user webcam mirror
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -204,7 +205,9 @@ export default function CameraCaptureModal({
                   <Camera className="w-4 h-4" />
                 </div>
                 <h3 className="text-sm font-bold text-heading">
-                  {isEyelid ? "Capture Lower Eyelid" : "Capture Nail-Bed"}
+                  {isEyelid
+                    ? t("screening.captureEyelidModal", "Capture Lower Eyelid")
+                    : t("screening.captureNailModal", "Capture Nail-Bed")}
                 </h3>
               </div>
 
@@ -221,8 +224,8 @@ export default function CameraCaptureModal({
             <div className="px-4 py-2 bg-surface border-b border-border/60">
               <p className="text-xs text-muted leading-snug">
                 {isEyelid
-                  ? "Align your lower eyelid inside the box until the pink conjunctiva is centered."
-                  : "Place your fingernail flat and center the nail-bed inside the box under bright light."}
+                  ? t("screening.eyelidCardDesc", "Gently pull down your lower eyelid to show the inner pink mucosa (palpebral conjunctiva).")
+                  : t("screening.nailCardSubtext", "Paleness in the nail bed can complement lower-eyelid analysis for anemia screening.")}
               </p>
             </div>
 
@@ -237,9 +240,8 @@ export default function CameraCaptureModal({
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover transform -scale-x-100 ${
-                  capturedImage ? "hidden" : "block"
-                }`}
+                className={`w-full h-full object-cover transform -scale-x-100 ${capturedImage ? "hidden" : "block"
+                  }`}
               />
 
               {/* Captured Photo Preview */}
@@ -275,11 +277,10 @@ export default function CameraCaptureModal({
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
                   {/* Bounding Box Frame */}
                   <div
-                    className={`relative w-4/5 h-4/5 rounded-2xl border-2 border-dashed ${
-                      isEyelid
+                    className={`relative w-4/5 h-4/5 rounded-2xl border-2 border-dashed ${isEyelid
                         ? "border-accent shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
                         : "border-accent shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
-                    } transition-all flex flex-col items-center justify-between p-2`}
+                      } transition-all flex flex-col items-center justify-between p-2`}
                   >
                     {/* Corner Guides */}
                     <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white rounded-tl" />
@@ -289,7 +290,7 @@ export default function CameraCaptureModal({
 
                     {/* Top Guide Text */}
                     <span className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-[10px] font-semibold text-white tracking-wide">
-                      {isEyelid ? "Target: Palpebral Conjunctiva" : "Target: Nail Bed"}
+                      {isEyelid ? t("screening.eyelidTarget", "Target: Palpebral Conjunctiva") : t("screening.nailReference", "Reference: Fingernail Bed")}
                     </span>
 
                     {/* Center Crosshair Marker */}
@@ -321,7 +322,7 @@ export default function CameraCaptureModal({
                 onClick={onClose}
                 className="px-3.5 py-2 text-xs font-semibold text-muted hover:text-heading transition-colors cursor-pointer"
               >
-                Cancel
+                {t("common.cancel", "Cancel")}
               </button>
 
               {capturedImage ? (
@@ -332,7 +333,7 @@ export default function CameraCaptureModal({
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-semibold text-heading hover:bg-surface transition-all active:scale-95 cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Retake</span>
+                    <span>{t("screening.retake", "Retake")}</span>
                   </button>
 
                   <button
@@ -341,7 +342,7 @@ export default function CameraCaptureModal({
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-dark text-white text-xs font-bold hover:bg-accent-dark/90 hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>Upload & Save</span>
+                    <span>{t("screening.uploadSave", "Upload & Save")}</span>
                   </button>
                 </div>
               ) : (
@@ -352,7 +353,7 @@ export default function CameraCaptureModal({
                   className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-dark text-white text-xs font-bold hover:bg-accent-dark/90 hover:scale-105 active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Capture Photo</span>
+                  <span>{t("screening.takePhoto", "Capture Photo")}</span>
                 </button>
               )}
             </div>

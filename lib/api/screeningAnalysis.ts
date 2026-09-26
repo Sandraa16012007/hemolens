@@ -121,6 +121,7 @@ export interface RunScreeningAnalysisOptions {
   previousAnemiaHistory?: string | null;
   medicalConditions?: string[] | null;
   symptoms?: { selected?: string[]; other?: string } | null;
+  language?: string;
   /** If the frontend already validated the image, skip backend re-validation */
   skipValidation?: boolean;
   onProgress?: (progress: AnalysisProgress) => void;
@@ -194,6 +195,8 @@ export async function runScreeningAnalysis(
     }
     formData.append("symptoms", JSON.stringify(symptomsDict));
   }
+
+  if (opts.language) formData.append("language", opts.language);
 
   formData.append("skip_validation", skipValidation ? "true" : "false");
   formData.append("generate_ai_report", "true");

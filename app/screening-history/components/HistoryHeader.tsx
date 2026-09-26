@@ -5,9 +5,11 @@ import Link from "next/link";
 import { Plus, UploadCloud } from "lucide-react";
 import { motion } from "framer-motion";
 import UploadMedicalReportModal from "./UploadMedicalReportModal";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 export default function HistoryHeader() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <motion.div
@@ -24,13 +26,13 @@ export default function HistoryHeader() {
               HemoLens
             </Link>
             <span className="text-muted/60">/</span>
-            <span className="text-accent-dark font-semibold">Screening History</span>
+            <span className="text-accent-dark font-semibold">{t("history.title", "Screening History")}</span>
           </nav>
           <h1 className="text-xl sm:text-2xl font-bold text-heading tracking-tight mb-1">
-            Screening History
+            {t("history.title", "Screening History")}
           </h1>
           <p className="text-xs sm:text-sm text-muted max-w-xl">
-            Review your past screening results and track your estimated hemoglobin levels over time.
+            {t("history.subtitle", "Review your past screening results and track your estimated hemoglobin levels over time.")}
           </p>
         </div>
 
@@ -43,7 +45,7 @@ export default function HistoryHeader() {
             className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-border bg-white text-heading text-xs sm:text-sm font-semibold hover:bg-surface hover:border-border/80 active:scale-[0.98] transition-all shadow-xs cursor-pointer"
           >
             <UploadCloud className="w-4 h-4 text-accent-dark" strokeWidth={2} />
-            <span>Add Medical Reports</span>
+            <span>{t("history.addMedicalReports", "Add Medical Reports")}</span>
           </button>
 
           {/* Primary CTA: Start New Screening */}
@@ -52,7 +54,7 @@ export default function HistoryHeader() {
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-xs sm:text-sm font-semibold hover:bg-primary-hover active:scale-[0.98] transition-all shadow-sm shadow-primary/20"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Start New Screening</span>
+            <span>{t("history.startNewScreening", "Start New Screening")}</span>
           </Link>
         </div>
       </div>

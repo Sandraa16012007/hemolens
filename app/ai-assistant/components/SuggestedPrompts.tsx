@@ -2,26 +2,29 @@
 
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
+import { useLanguage } from "@/app/context/LanguageContext";
 
 interface SuggestedPromptsProps {
   onSelectPrompt: (prompt: string) => void;
 }
 
 export default function SuggestedPrompts({ onSelectPrompt }: SuggestedPromptsProps) {
+  const { t } = useLanguage();
+
   const prompts = [
-    "What foods should I eat?",
-    "Should I see a doctor?",
-    "How does the screening work?",
-    "Tips for more energy",
+    t("assistant.prompt1", "What foods are highest in iron for vegetarians?"),
+    t("assistant.prompt2", "How does lower eyelid pallor relate to anemia?"),
+    t("assistant.prompt3", "What blood tests confirm an anemia diagnosis?"),
+    t("assistant.prompt4", "What are the common symptoms of mild anemia?"),
   ];
 
   return (
     <div className="space-y-2 pt-1" id="suggested-prompts-section">
       <span className="text-[11px] font-bold tracking-wider text-muted uppercase block">
-        Suggested questions
+        {t("assistant.title", "HemoLens AI Health Assistant")}
       </span>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {prompts.map((prompt) => (
           <motion.button
             key={prompt}
