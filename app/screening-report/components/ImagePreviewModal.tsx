@@ -11,7 +11,7 @@ interface ImagePreviewModalProps {
   /** Phase 2: ROI-marked eyelid image */
   eyelidRoiMarkedUrl?: string | null;
   nailbedImageUrl?: string | null;
-  /** Phase 2 passthrough: teammate ROI-marked nail image */
+  /** ROI-marked nail-bed image */
   nailbedRoiMarkedUrl?: string | null;
 }
 
@@ -138,7 +138,7 @@ export default function ImagePreviewModal({
                       {nailbedRoiMarkedUrl ? (
                         <Image src={nailbedRoiMarkedUrl} alt="ROI-Marked Nail-Bed Image" fill className="object-cover" priority />
                       ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center px-2">ROI pending (teammate)</span></div>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center px-2">ROI pending</span></div>
                       )}
                       <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-amber-600/90 backdrop-blur-xs text-[10px] text-white font-medium">ROI-Marked Nail-Bed Image</div>
                     </>
@@ -146,7 +146,7 @@ export default function ImagePreviewModal({
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted"><ImageOff className="w-8 h-8 opacity-40" /><span className="text-xs text-center leading-snug px-4">Nail-bed image not uploaded</span></div>
                   )}
                 </div>
-                <p className="text-[11px] text-muted leading-relaxed">{nailbedImageUrl ? "Capillary bed refill and micro-pallor (teammate ROI) — secondary biomarker." : "Upload a nail-bed image during screening for supplementary analysis."}</p>
+                <p className="text-[11px] text-muted leading-relaxed">{nailbedImageUrl ? "Numbered nail-plate ROIs with inner analysis regions (nail RGB optical analysis) — secondary biomarker." : "Upload a nail-bed image during screening for supplementary analysis."}</p>
               </div>
             </div>
 

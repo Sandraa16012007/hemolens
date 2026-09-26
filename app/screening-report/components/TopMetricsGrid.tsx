@@ -21,7 +21,7 @@ interface TopMetricsGridProps {
   /** Phase 2: ROI-marked eyelid image (outline + translucent mask) */
   eyelidRoiMarkedUrl?: string | null;
   nailbedImageUrl?: string | null;
-  /** Phase 2 passthrough: teammate-produced ROI-marked nail-bed image */
+  /** ROI-marked nail-bed image (numbered nail boxes + inner analysis regions) */
   nailbedRoiMarkedUrl?: string | null;
   reportStatus?: string;
   /** Live ML prediction from backend (null = still pending) */
@@ -355,7 +355,7 @@ export default function TopMetricsGrid({
                         <span className="absolute bottom-1.5 left-2 text-[10px] font-bold text-white tracking-wide bg-black/60 px-1.5 py-0.5 rounded">ROI-Marked</span>
                       </>
                     ) : (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px] text-center px-1 leading-tight">ROI pending (teammate)</span></div>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted"><ImageOff className="w-5 h-5 opacity-50" /><span className="text-[10px] text-center px-1 leading-tight">ROI pending</span></div>
                     )}
                   </div>
                 </div>

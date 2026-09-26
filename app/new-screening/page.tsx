@@ -17,6 +17,7 @@ import {
   STAGE_LABELS,
 } from "@/lib/api/screeningAnalysis";
 import { createScreeningWithImages } from "@/lib/supabase/screenings";
+import { extractNailFeatures } from "@/lib/api/nailFeatures";
 import { useSidebar } from "../context/SidebarContext";
 
 export default function NewScreeningPage() {
@@ -339,6 +340,55 @@ export default function NewScreeningPage() {
             .eq("id", createdScreeningId);
         } catch {
           // non-fatal
+        }
+      }
+
+      // If a nail-bed image was provided and validated, extract nail ROI
+      // features so the report can show the ROI-marked nail image exactly
+      // like the eyelid ROI. Non-fatal: never blocks the report on failure.
+      if (nailBedImage && nailValidation.status === "valid") {
+        try {
+          let nailBlob: Blob;
+          if (nailBedImage.file) {
+            nailBlob = nailBedImage.file;
+          } else if (nailBedImage.previewUrl) {
+            const nailResp = await fetch(nailBedImage.previewUrl);
+            if (!nailResp.ok) throw new Error("Could not load nail image data.");
+            nailBlob = await nailResp.blob();
+          } else {
+            throw new Error("No nail image data available.");
+          }
+
+          const nailResult = await extractNailFeatures(nailBlob, result.screening_id);
+
+          if (nailResult.success && nailResult.roi_marked_image_base64) {
+            const nailRoiBase64 = nailResult.roi_marked_image_base64;
+            if (createdScreeningId) {
+              try {
+                const { createClient } = await import("@/lib/supabase/client");
+                const supabase = createClient();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabase.from("screenings") as any)
+                  .update({
+                    nailbed_roi_image_url: nailRoiBase64,
+                  })
+                  .eq("id", createdScreeningId);
+              } catch {
+                // non-fatal
+              }
+            }
+            if (typeof window !== "undefined") {
+              try {
+                sessionStorage.setItem(`hemolens_nail_roi_${result.screening_id}`, nailRoiBase64);
+              } catch {
+                // ignore storage quota issues
+              }
+            }
+          } else if (!nailResult.success) {
+            console.warn("Nail ROI extraction returned no usable ROI (non-fatal):", nailResult.reason);
+          }
+        } catch (nailErr) {
+          console.warn("Non-fatal nail ROI extraction issue:", nailErr);
         }
       }
 
