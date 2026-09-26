@@ -1,26 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, TrendingDown, Phone, Check, Building2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Phone, Check, Building2, Loader2 } from "lucide-react";
+import { getUserScreeningHistory, type ScreeningHistoryItem } from "@/lib/supabase/screenings";
+
+// Chart constants
+const CHART_W = 340;
+const CHART_H = 160;
+const PAD_L = 38;
+const PAD_R = 20;
+const PAD_T = 22;
+const PAD_B = 20;
+const PLOT_W = CHART_W - PAD_L - PAD_R;
+const PLOT_H = CHART_H - PAD_T - PAD_B;
+const REF_HB = 12.0; // reference baseline g/dL
+
+interface ChartPoint {
+  x: number;
+  y: number;
+  hb: number;
+  label: string;
+  isLatest: boolean;
+}
+
+function hbToY(hb: number, minHb: number, maxHb: number): number {
+  // Map hb value to SVG y coordinate (higher hb = lower y number = higher on chart)
+  const range = maxHb - minHb || 2;
+  return PAD_T + PLOT_H - ((hb - minHb) / range) * PLOT_H;
+}
+
+function buildChartPoints(items: ScreeningHistoryItem[]): ChartPoint[] {
+  // Items sorted ascending for chart (earliest → latest)
+  const sorted = [...items]
+    .filter((i) => i.hbEstimate !== null)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  if (sorted.length === 0) return [];
+
+  const hbValues = sorted.map((i) => i.hbEstimate as number);
+  const rawMin = Math.min(...hbValues, REF_HB - 0.5);
+  const rawMax = Math.max(...hbValues, REF_HB + 0.5);
+  const padding = (rawMax - rawMin) * 0.15 || 1;
+  const minHb = rawMin - padding;
+  const maxHb = rawMax + padding;
+
+  return sorted.map((item, idx) => {
+    const n = sorted.length;
+    const x = n === 1 ? PAD_L + PLOT_W / 2 : PAD_L + (idx / (n - 1)) * PLOT_W;
+    const hb = item.hbEstimate as number;
+    const y = hbToY(hb, minHb, maxHb);
+    return { x, y, hb, label: item.shortDate, isLatest: idx === n - 1 };
+  });
+}
+
 
 export default function TrendAndClinicalHelp() {
   const [contactedLab, setContactedLab] = useState<string | null>(null);
+  const [historyItems, setHistoryItems] = useState<ScreeningHistoryItem[]>([]);
+  const [trendLoading, setTrendLoading] = useState(true);
 
-  const labs = [
-    {
-      id: "lab-1",
-      name: "CityCare Diagnostic Centre",
-      phone: "+1 (800) 555-0199",
-      address: "Downtown Medical Plaza, Suite 300",
-    },
-    {
-      id: "lab-2",
-      name: "District Health Phlebotomy Lab",
-      phone: "+1 (800) 555-0142",
-      address: "Community Health Center, 2nd Floor",
-    },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    getUserScreeningHistory().then(({ data }) => {
+      if (mounted) {
+        setHistoryItems(data);
+        setTrendLoading(false);
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const chartPoints = buildChartPoints(historyItems);
+  const itemsWithHb = historyItems.filter((i) => i.hbEstimate !== null);
+  const sorted = [...itemsWithHb].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  // Slope: change in Hb per month
+  let slopeText: string | null = null;
+  let slopePositive = false;
+  if (sorted.length >= 2) {
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const monthsDiff =
+      (new Date(last.createdAt).getTime() - new Date(first.createdAt).getTime()) /
+      (1000 * 60 * 60 * 24 * 30.44);
+    const hbDiff = (last.hbEstimate as number) - (first.hbEstimate as number);
+    const slope = monthsDiff > 0.1 ? hbDiff / monthsDiff : hbDiff;
+    slopePositive = slope >= 0;
+    slopeText = `${slope >= 0 ? "+" : ""}${slope.toFixed(1)} g/dL/mo`;
+  }
 
   const handleContact = (labName: string) => {
     setContactedLab(labName);
@@ -43,102 +113,128 @@ export default function TrendAndClinicalHelp() {
             Estimated Hb Trend
           </h2>
           <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <TrendingUp className="w-4 h-4" />
+            {slopePositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4 text-primary" />}
           </div>
         </div>
 
-        {/* Interactive SVG Chart Container */}
+        {/* Chart Container */}
         <div className="bg-[#f8fafc]/80 rounded-xl p-4 border border-border/60 mb-4">
-          <div className="relative w-full h-44">
-            <svg
-              viewBox="0 0 340 160"
-              className="w-full h-full overflow-visible"
-              aria-label="Hemoglobin level trend over past 3 months"
-            >
-              <defs>
-                {/* Area Gradient */}
-                <linearGradient id="historyAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#088395" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#088395" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
+          {trendLoading ? (
+            <div className="flex items-center justify-center h-44 gap-2 text-muted">
+              <Loader2 className="w-5 h-5 animate-spin text-accent-dark" />
+              <span className="text-xs">Loading trend...</span>
+            </div>
+          ) : chartPoints.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-44 gap-2 text-center">
+              <Minus className="w-5 h-5 text-muted" />
+              <p className="text-xs text-muted max-w-[200px]">
+                No historical screenings recorded yet. Complete a screening to begin tracking your Hb trend.
+              </p>
+            </div>
+          ) : (
+            <div className="relative w-full h-44">
+              <svg
+                viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+                className="w-full h-full overflow-visible"
+                aria-label="Hemoglobin level trend over past screenings"
+              >
+                <defs>
+                  <linearGradient id="historyAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#088395" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#088395" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
 
-              {/* Grid Lines & Y-Axis Labels */}
-              {/* 13.0 */}
-              <line x1="38" y1="20" x2="330" y2="20" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" />
-              <text x="14" y="23" fill="#94a3b8" fontSize="10" fontFamily="sans-serif">13.0</text>
+                {/* Reference baseline */}
+                {(() => {
+                  const hbValues = chartPoints.map((p) => p.hb);
+                  const rawMin = Math.min(...hbValues, REF_HB - 0.5);
+                  const rawMax = Math.max(...hbValues, REF_HB + 0.5);
+                  const padding = (rawMax - rawMin) * 0.15 || 1;
+                  const minHb = rawMin - padding;
+                  const maxHb = rawMax + padding;
+                  const refY = hbToY(REF_HB, minHb, maxHb);
+                  return (
+                    <>
+                      <line x1={PAD_L} y1={refY} x2={CHART_W - PAD_R} y2={refY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="4 4" />
+                      <text x={PAD_L + 2} y={refY - 4} fill="#64748b" fontSize="8" fontFamily="sans-serif">Reference {REF_HB} g/dL</text>
+                    </>
+                  );
+                })()}
 
-              {/* 12.0 Reference Baseline */}
-              <line x1="38" y1="55" x2="330" y2="55" stroke="#94a3b8" strokeWidth="1" strokeDasharray="4 4" />
-              <text x="14" y="58" fill="#64748b" fontSize="10" fontWeight="600" fontFamily="sans-serif">12.0</text>
-              <text x="210" y="48" fill="#64748b" fontSize="8" fontFamily="sans-serif">Clinical Reference Baseline (12.0 g/dL)</text>
+                {/* Area fill */}
+                {chartPoints.length >= 2 && (
+                  <polygon
+                    points={[
+                      ...chartPoints.map((p) => `${p.x},${p.y}`),
+                      `${chartPoints[chartPoints.length - 1].x},${CHART_H - PAD_B + 8}`,
+                      `${chartPoints[0].x},${CHART_H - PAD_B + 8}`,
+                    ].join(" ")}
+                    fill="url(#historyAreaGrad)"
+                  />
+                )}
 
-              {/* 11.0 */}
-              <line x1="38" y1="90" x2="330" y2="90" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" />
-              <text x="14" y="93" fill="#94a3b8" fontSize="10" fontFamily="sans-serif">11.0</text>
+                {/* Trend line */}
+                {chartPoints.length >= 2 && (
+                  <polyline
+                    points={chartPoints.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke="#088395"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
 
-              {/* 10.0 */}
-              <line x1="38" y1="125" x2="330" y2="125" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" />
-              <text x="14" y="128" fill="#94a3b8" fontSize="10" fontFamily="sans-serif">10.0</text>
-
-              {/* Area Under Curve */}
-              {/* Points: Jun (80, 75), Aug (180, 62), Sep (280, 104) */}
-              <polygon
-                points="80,75 180,62 280,104 280,135 80,135"
-                fill="url(#historyAreaGrad)"
-              />
-
-              {/* Trend Polyline */}
-              <polyline
-                points="80,75 180,62 280,104"
-                fill="none"
-                stroke="#088395"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-
-              {/* Point 1: 20 Jun (11.4 g/dL) */}
-              <circle cx="80" cy="75" r="4.5" fill="#ffffff" stroke="#088395" strokeWidth="2.5" />
-              <text x="80" y="65" textAnchor="middle" fill="#0f172a" fontSize="9" fontWeight="700" fontFamily="sans-serif">
-                11.4
-              </text>
-              <text x="80" y="145" textAnchor="middle" fill="#64748b" fontSize="9" fontFamily="sans-serif">
-                20 Jun
-              </text>
-
-              {/* Point 2: 12 Aug (11.8 g/dL) */}
-              <circle cx="180" cy="62" r="4.5" fill="#ffffff" stroke="#088395" strokeWidth="2.5" />
-              <text x="180" y="52" textAnchor="middle" fill="#0f172a" fontSize="9" fontWeight="700" fontFamily="sans-serif">
-                11.8
-              </text>
-              <text x="180" y="145" textAnchor="middle" fill="#64748b" fontSize="9" fontFamily="sans-serif">
-                12 Aug
-              </text>
-
-              {/* Point 3: 17 Sep (10.6 g/dL - Latest / Lower) */}
-              <circle cx="280" cy="104" r="5" fill="#bf191d" stroke="#ffffff" strokeWidth="2" />
-              <text x="280" y="95" textAnchor="middle" fill="#bf191d" fontSize="9" fontWeight="700" fontFamily="sans-serif">
-                10.6
-              </text>
-              <text x="280" y="145" textAnchor="middle" fill="#0f172a" fontSize="9" fontWeight="600" fontFamily="sans-serif">
-                17 Sep
-              </text>
-            </svg>
-          </div>
+                {/* Data points */}
+                {chartPoints.map((point) => (
+                  <g key={point.label + point.hb}>
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={point.isLatest ? 5 : 4.5}
+                      fill={point.isLatest ? "#bf191d" : "#ffffff"}
+                      stroke={point.isLatest ? "#ffffff" : "#088395"}
+                      strokeWidth="2.5"
+                    />
+                    <text x={point.x} y={point.y - 9} textAnchor="middle" fill={point.isLatest ? "#bf191d" : "#0f172a"} fontSize="9" fontWeight="700" fontFamily="sans-serif">
+                      {point.hb.toFixed(1)}
+                    </text>
+                    <text x={point.x} y={CHART_H - PAD_B + 14} textAnchor="middle" fill={point.isLatest ? "#0f172a" : "#64748b"} fontSize="9" fontWeight={point.isLatest ? "600" : "400"} fontFamily="sans-serif">
+                      {point.label}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+          )}
         </div>
 
-        {/* Note Callout */}
-        <div className="rounded-xl bg-[#f8fafc] border border-border/80 p-3.5 flex items-start gap-2.5">
-          <div className="w-5 h-5 rounded-md bg-red-100 text-primary flex items-center justify-center flex-shrink-0 mt-0.5">
-            <TrendingDown className="w-3.5 h-3.5" />
+        {/* Slope / note callout */}
+        {!trendLoading && chartPoints.length >= 2 && slopeText && (
+          <div className="rounded-xl bg-[#f8fafc] border border-border/80 p-3.5 flex items-start gap-2.5">
+            <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 ${slopePositive ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-primary"}`}>
+              {slopePositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              <strong className="text-heading font-semibold">Trend:</strong>{" "}
+              {slopePositive
+                ? `Your Hb estimate is trending upward (${slopeText}). Keep up your dietary habits.`
+                : `Your latest estimate is lower than your first screening (${slopeText}). A routine blood test can confirm your iron levels.`}
+            </p>
           </div>
-          <p className="text-xs text-muted leading-relaxed">
-            <strong className="text-heading font-semibold">Note:</strong> Your
-            latest estimate is slightly lower than August. A routine blood test
-            can check your iron levels.
-          </p>
-        </div>
+        )}
+        {!trendLoading && chartPoints.length === 1 && (
+          <div className="rounded-xl bg-[#f8fafc] border border-border/80 p-3.5 flex items-start gap-2.5">
+            <div className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <TrendingUp className="w-3.5 h-3.5" />
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              <strong className="text-heading font-semibold">Baseline recorded.</strong>{" "}
+              Complete more screenings over time to see how your Hb estimate trends.
+            </p>
+          </div>
+        )}
       </motion.div>
 
       {/* 2. Need Clinical Help? Card */}

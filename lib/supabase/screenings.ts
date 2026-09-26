@@ -1,5 +1,6 @@
 import { createClient } from "./client";
-import type { Screening, ScreeningInsert, ScreeningSymptoms, Json } from "@/types/database.types";
+import type { Screening, ScreeningInsert, ScreeningSymptoms, Json, Report } from "@/types/database.types";
+import { parseReportResult, type ParsedReportResult } from "./reportResult";
 
 export interface ImagePayload {
   file?: File | Blob;
@@ -314,4 +315,198 @@ export async function getUserScreenings(): Promise<{
     return { data: [], error: new Error(error.message) };
   }
   return { data: (data as Screening[]) || [], error: null };
+}
+
+export interface ScreeningHistoryItem {
+  id: string;
+  screening: Screening;
+  report: Report | null;
+  parsed: ParsedReportResult;
+  createdAt: string;
+  formattedDate: string;
+  shortDate: string;
+  hbEstimate: number | null;
+  hbRange: string;
+  riskLevel: "Lower risk" | "Mild risk" | "Moderate risk" | "High risk" | "Severe risk" | "Pending" | "Unclassifiable";
+  rawRiskCategory: string | null;
+  summary: string;
+  reportHref: string;
+  isLatest: boolean;
+}
+
+function formatScreeningDate(isoDate: string): string {
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "Recent";
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return "Recent";
+  }
+}
+
+function formatScreeningShortDate(isoDate: string): string {
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "Recent";
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+    }).format(d);
+  } catch {
+    return "Recent";
+  }
+}
+
+function mapRiskLevel(
+  riskCategory?: string | null,
+  status?: string
+): ScreeningHistoryItem["riskLevel"] {
+  if (status === "pending" || !riskCategory) return "Pending";
+  const cat = riskCategory.toLowerCase();
+  if (cat.includes("normal") || cat.includes("low")) return "Lower risk";
+  if (cat.includes("mild")) return "Mild risk";
+  if (cat.includes("mod")) return "Moderate risk";
+  if (cat.includes("sev") || cat.includes("high")) return "High risk";
+  if (cat.includes("unclass")) return "Unclassifiable";
+  return "Lower risk";
+}
+
+function buildHistoryItem(
+  screening: Screening,
+  report: Report | null,
+  isLatest: boolean
+): ScreeningHistoryItem {
+  const parsed = parseReportResult(report);
+
+  let hbRange = "—";
+  if (parsed.ml_prediction?.hb_range) {
+    const [low, high] = parsed.ml_prediction.hb_range;
+    hbRange = `${low.toFixed(1)}–${high.toFixed(1)}`;
+  } else if (parsed.ml_prediction?.hb_estimate != null) {
+    hbRange = `${parsed.ml_prediction.hb_estimate.toFixed(1)}`;
+  }
+
+  const rawRiskCategory = parsed.clinical_classification?.risk_category ?? null;
+  const riskLevel = mapRiskLevel(rawRiskCategory, report?.status);
+
+  let summary = parsed.narrative_report?.summary;
+  if (!summary) {
+    if (parsed.ml_prediction?.hb_estimate != null) {
+      const hb = parsed.ml_prediction.hb_estimate;
+      if (hb < 11.0) {
+        summary = `Suggests moderate-to-elevated anemia risk (${hb.toFixed(1)} g/dL). A confirmatory blood test is recommended.`;
+      } else {
+        summary = `Estimated hemoglobin level (${hb.toFixed(1)} g/dL) suggests lower risk.`;
+      }
+    } else {
+      summary = "Screening recorded. View report for detailed clinical insights.";
+    }
+  }
+
+  return {
+    id: screening.id,
+    screening,
+    report,
+    parsed,
+    createdAt: screening.created_at,
+    formattedDate: formatScreeningDate(screening.created_at),
+    shortDate: formatScreeningShortDate(screening.created_at),
+    hbEstimate: parsed.ml_prediction?.hb_estimate ?? null,
+    hbRange,
+    riskLevel,
+    rawRiskCategory,
+    summary,
+    reportHref: `/screening-report?screeningId=${screening.id}`,
+    isLatest,
+  };
+}
+
+/**
+ * Fetch all completed screenings with their parsed report results for the current authenticated user.
+ */
+export async function getUserScreeningHistory(): Promise<{
+  data: ScreeningHistoryItem[];
+  error: Error | null;
+}> {
+  const supabase = createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { data: [], error: null };
+  }
+
+  // 1. Fetch screenings with joined reports
+  const { data, error } = await supabase
+    .from("screenings")
+    .select(`
+      *,
+      reports (*)
+    `)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    // Fallback: Query tables independently if PostgREST relation syntax encounters issues
+    const { data: screeningsData, error: sErr } = await supabase
+      .from("screenings")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (sErr) {
+      return { data: [], error: new Error(sErr.message) };
+    }
+
+    const { data: reportsData } = await supabase
+      .from("reports")
+      .select("*")
+      .eq("user_id", user.id);
+
+    const reportsMap = new Map<string, Report>();
+    if (reportsData) {
+      for (const r of reportsData as Report[]) {
+        reportsMap.set(r.screening_id, r);
+      }
+    }
+
+    const items: ScreeningHistoryItem[] = (screeningsData || []).map(
+      (s: Screening, idx: number) => {
+        const rep = reportsMap.get(s.id) || null;
+        return buildHistoryItem(s, rep, idx === 0);
+      }
+    );
+
+    return { data: items, error: null };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items: ScreeningHistoryItem[] = ((data as any[]) || []).map((row: any, idx: number) => {
+    const rawReport = Array.isArray(row.reports) ? row.reports[0] : row.reports;
+    const report: Report | null = rawReport || null;
+    const screening: Screening = {
+      id: row.id,
+      user_id: row.user_id,
+      eyelid_image_path: row.eyelid_image_path,
+      eyelid_image_url: row.eyelid_image_url,
+      nailbed_image_path: row.nailbed_image_path,
+      nailbed_image_url: row.nailbed_image_url,
+      symptoms: row.symptoms,
+      status: row.status,
+      created_at: row.created_at,
+      eyelid_roi_image_path: row.eyelid_roi_image_path,
+      eyelid_roi_image_url: row.eyelid_roi_image_url,
+      nailbed_roi_image_path: row.nailbed_roi_image_path,
+      nailbed_roi_image_url: row.nailbed_roi_image_url,
+    };
+    return buildHistoryItem(screening, report, idx === 0);
+  });
+
+  return { data: items, error: null };
 }
