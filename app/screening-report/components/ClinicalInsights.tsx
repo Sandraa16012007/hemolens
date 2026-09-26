@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  HelpCircle,
   ClipboardCheck,
   Moon,
   RefreshCw,
@@ -68,24 +67,7 @@ export default function ClinicalInsights({ narrativeReport }: ClinicalInsightsPr
         </motion.div>
       )}
 
-      {/* 1. What does this mean? */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.15 }}
-        className="rounded-2xl border border-border bg-white p-5 sm:p-6 shadow-xs"
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <HelpCircle className="w-4 h-4 text-accent-dark" />
-          <h2 className="text-sm sm:text-base font-bold text-heading">
-            What does this mean?
-          </h2>
-        </div>
-        <p className="text-xs sm:text-sm text-muted leading-relaxed">
-          {narrativeReport?.explanation ??
-            "Your screening result will be interpreted once the analysis is complete."}
-        </p>
-      </motion.div>
+
 
       {/* 2. Factors considered */}
       <motion.div

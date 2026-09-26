@@ -7,6 +7,7 @@ import Sidebar from "../components/Sidebar";
 import DashboardHeader from "../components/DashboardHeader";
 import ReportHeader from "./components/ReportHeader";
 import TopMetricsGrid from "./components/TopMetricsGrid";
+import UploadedPhotosCard from "./components/UploadedPhotosCard";
 import ClinicalInsights from "./components/ClinicalInsights";
 import TrendAndHealthcare from "./components/TrendAndHealthcare";
 import RegulatorySafeguard from "./components/RegulatorySafeguard";
@@ -245,7 +246,14 @@ function ScreeningReportContent() {
                 reportStatus={report?.status ?? "pending"}
               />
 
-              {/* 2. Top Metrics + Images */}
+              {/* 2. Top Metrics Grid (Estimated Hb & Anemia Risk) */}
+              <TopMetricsGrid
+                reportStatus={report?.status ?? "pending"}
+                mlPrediction={parsedResult.ml_prediction}
+                clinicalClassification={parsedResult.clinical_classification}
+              />
+
+              {/* 3. Main Report Content: 2 Columns */}
               {(() => {
                 let cachedEyelid: string | null = null;
                 let cachedNail: string | null = null;
@@ -268,23 +276,30 @@ function ScreeningReportContent() {
                 const effectiveNailRoiUrl = screening?.nailbed_roi_image_url || cachedNailRoi || null;
 
                 return (
-                  <TopMetricsGrid
-                    eyelidImageUrl={effectiveEyelidUrl}
-                    eyelidRoiMarkedUrl={effectiveEyelidRoiUrl}
-                    nailbedImageUrl={effectiveNailUrl}
-                    nailbedRoiMarkedUrl={effectiveNailRoiUrl}
-                    reportStatus={report?.status ?? "pending"}
-                    mlPrediction={parsedResult.ml_prediction}
-                    clinicalClassification={parsedResult.clinical_classification}
-                  />
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+                    {/* Left Column: AI Summary, Factors considered, What should I do next? */}
+                    <div className="space-y-4">
+                      <ClinicalInsights narrativeReport={parsedResult.narrative_report} />
+                    </div>
+
+                    {/* Right Column: Uploaded Photos View (narrower, 1-col on right) + Trend & Healthcare */}
+                    <div className="space-y-4">
+                      <UploadedPhotosCard
+                        eyelidImageUrl={effectiveEyelidUrl}
+                        eyelidRoiMarkedUrl={effectiveEyelidRoiUrl}
+                        nailbedImageUrl={effectiveNailUrl}
+                        nailbedRoiMarkedUrl={effectiveNailRoiUrl}
+                        reportStatus={report?.status ?? "pending"}
+                      />
+                      <TrendAndHealthcare
+                        currentHbEstimate={parsedResult.ml_prediction?.hb_estimate ?? null}
+                        screenedAt={screening?.created_at ?? null}
+                        currentScreeningId={screeningId ?? null}
+                      />
+                    </div>
+                  </div>
                 );
               })()}
-
-              {/* 3. Detailed Insights & Trend Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
-                <ClinicalInsights narrativeReport={parsedResult.narrative_report} />
-                <TrendAndHealthcare />
-              </div>
 
               {/* 4. Regulatory Safeguard */}
               <RegulatorySafeguard />
